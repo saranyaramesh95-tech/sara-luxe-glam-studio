@@ -155,24 +155,93 @@ function Root() {
 
   return (
     <div>
-      <button
-        onClick={() => window.supabaseClient.auth.signOut()}
+      <div
         style={{
           position: "fixed",
           top: 8,
           right: 8,
           zIndex: 1000,
+          display: "flex",
+          gap: 6,
+        }}
+      >
+        <NotificationToggle />
+        <button
+          onClick={() => window.supabaseClient.auth.signOut()}
+          style={{
+            fontSize: 12,
+            padding: "5px 10px",
+            cursor: "pointer",
+            border: "1px solid #ccc",
+            borderRadius: 6,
+            background: "#fff",
+          }}
+        >
+          Sign out
+        </button>
+      </div>
+      <SaraLuxeGlamStudio />
+    </div>
+  );
+}
+
+function NotificationToggle() {
+  // "unknown" while checking, then "unsupported" | "off" | "on"
+  const [state, setState] = useState2("unknown");
+  const [busy, setBusy] = useState2(false);
+  const [msg, setMsg] = useState2("");
+
+  const refresh = async () => {
+    if (!window.pushNotifications || !window.pushNotifications.isSupported()) {
+      setState("unsupported");
+      return;
+    }
+    const sub = await window.pushNotifications.currentSubscription();
+    setState(sub ? "on" : "off");
+  };
+
+  useEffect2(() => {
+    refresh();
+  }, []);
+
+  const toggle = async () => {
+    setBusy(true);
+    setMsg("");
+    try {
+      if (state === "on") {
+        await window.pushNotifications.disable();
+      } else {
+        await window.pushNotifications.enable();
+      }
+      await refresh();
+    } catch (e) {
+      setMsg(e.message || "Couldn't change that.");
+    }
+    setBusy(false);
+  };
+
+  if (state === "unsupported" || state === "unknown") return null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {msg && (
+        <span style={{ fontSize: 11, color: "#c0392b", maxWidth: 160 }}>{msg}</span>
+      )}
+      <button
+        onClick={toggle}
+        disabled={busy}
+        style={{
           fontSize: 12,
           padding: "5px 10px",
           cursor: "pointer",
           border: "1px solid #ccc",
           borderRadius: 6,
-          background: "#fff",
+          background: state === "on" ? "#111" : "#fff",
+          color: state === "on" ? "#fff" : "#111",
         }}
       >
-        Sign out
+        {busy ? "…" : state === "on" ? "Notifications on" : "Enable notifications"}
       </button>
-      <SaraLuxeGlamStudio />
     </div>
   );
 }

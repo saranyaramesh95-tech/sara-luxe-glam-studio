@@ -193,6 +193,72 @@ everything else — message, preferred contact time, service counts, how
 she heard about you — written into the card's notes so nothing's lost.
 This checks quietly every time you open the app; no button to press.
 
+### 9. Phone notifications (optional)
+
+Real push notifications — new inquiry, follow-ups due, and a once-a-day
+morning digest (today's routine focus + overdue follow-ups) — sent
+straight to your phone, free, no separate service.
+
+**Step A — database.** Run this in SQL Editor:
+
+```sql
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table push_subscriptions enable row level security;
+
+drop policy if exists "Owner can manage subscriptions" on push_subscriptions;
+create policy "Owner can manage subscriptions"
+on push_subscriptions
+for all
+using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+
+alter table inquiries add column if not exists notified boolean not null default false;
+
+create table if not exists notification_state (
+  key text primary key,
+  value text
+);
+alter table notification_state enable row level security;
+-- No policies added on purpose — only the notify function (service role)
+-- ever touches this table.
+
+NOTIFY pgrst, 'reload schema';
+```
+
+**Step B — the Edge Function.** In the Supabase dashboard, go to
+**Edge Functions → Deploy a new function**, name it `notify`, and paste
+in the contents of [`supabase-functions/notify/index.ts`](supabase-functions/notify/index.ts)
+from this repo.
+
+Then, in that function's **Settings → Secrets**, add:
+
+| Secret | Value |
+|---|---|
+| `VAPID_PUBLIC_KEY` | (given to you separately — keep both keys private) |
+| `VAPID_PRIVATE_KEY` | (given to you separately — keep both keys private) |
+
+(`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are already provided
+automatically to every Edge Function — nothing to add for those.)
+
+**Step C — the schedule.** In SQL Editor, run the scheduling SQL you were
+given separately (it checks for anything to notify every 10 minutes).
+
+**Step D — turn it on for your phone.** Open the app, signed in, and tap
+**"Enable notifications"** in the top-right corner. Your browser will ask
+to allow notifications — say yes. Do this on each device you want
+notified (e.g., separately on your phone and laptop).
+
+That's it — from then on you'll get a push notification the moment a new
+inquiry comes in, and once each morning (after 8am Central) with today's
+routine focus and any follow-ups due.
+
 ## Day to day
 
 - Open the GitHub Pages URL on your phone or laptop, sign in once (it'll
