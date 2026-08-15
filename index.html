@@ -36,6 +36,9 @@
 <!-- Weekly auto-backup to Supabase Storage, prunes anything over 90 days old -->
 <script src="auto-backup.js"></script>
 
+<!-- Pulls in new website inquiries (see inquiry.html) as pipeline cards -->
+<script src="inquiry-import.js"></script>
+
 <!-- The app itself, then the login gate + render call.
      Loaded manually (not via Babel's auto-scan script tags) and forced to
      the "classic" JSX runtime, because Babel's newer default runtime emits

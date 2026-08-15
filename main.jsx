@@ -119,6 +119,9 @@ function Root() {
     if (session && window.runAutoBackupIfDue) {
       window.runAutoBackupIfDue();
     }
+    if (session && window.runInquiryImportIfDue) {
+      window.runInquiryImportIfDue();
+    }
   }, [session]);
 
   if (!window.supabaseClient) {

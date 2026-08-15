@@ -128,6 +128,71 @@ fresh dated snapshot to that bucket, and deletes any of its own backups
 older than 90 days. It's silent — no button, no popup — check
 **Supabase → Storage → backups** if you ever want to see what's there.
 
+### 8. Website inquiries → straight into the pipeline (optional)
+
+In Supabase SQL Editor, run this once to create the `inquiries` table
+website visitors submit into:
+
+```sql
+create table inquiries (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  answers jsonb not null,
+  imported boolean not null default false
+);
+
+alter table inquiries enable row level security;
+
+create policy "Anyone can submit an inquiry"
+on inquiries
+for insert
+to anon
+with check (true);
+
+create policy "Owner can view inquiries"
+on inquiries for select
+using (auth.role() = 'authenticated');
+
+create policy "Owner can update inquiries"
+on inquiries for update
+using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+
+create policy "Owner can delete inquiries"
+on inquiries for delete
+using (auth.role() = 'authenticated');
+```
+
+This repo now also has [`inquiry.html`](inquiry.html) — a standalone
+inquiry form styled to match saraluxeglam.com (black background, Cormorant
+serif font, the same 12 questions your Portfoliobox form currently asks).
+It's live at:
+
+```
+https://<your-username>.github.io/<repo-name>/inquiry.html
+```
+
+Put that link on your website — either as a plain link/button ("Send an
+inquiry"), or embedded directly on the page with an iframe:
+
+```html
+<iframe
+  src="https://<your-username>.github.io/<repo-name>/inquiry.html"
+  style="width:100%; height:1400px; border:0;"
+></iframe>
+```
+
+(Portfoliobox may call this an "Embed" or "HTML" block when adding it to
+a page — check its block/widget menu.)
+
+Every submission goes straight into Supabase — not through your app, and
+not through Portfoliobox's own contact form. Next time you open the app
+signed in, it automatically pulls in any new ones as fresh pipeline cards
+(stage: Inquiry), with her name/email/phone/date/location filled in and
+everything else — message, preferred contact time, service counts, how
+she heard about you — written into the card's notes so nothing's lost.
+This checks quietly every time you open the app; no button to press.
+
 ## Day to day
 
 - Open the GitHub Pages URL on your phone or laptop, sign in once (it'll

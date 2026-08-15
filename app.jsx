@@ -908,6 +908,20 @@ function Details({ c, patch }) {
               <option>Other</option>
             </select>
           </Field>
+          <Field label="Phone">
+            <input
+              value={c.phone || ""}
+              placeholder="Her number"
+              onChange={(e) => patch(c.id, { phone: e.target.value })}
+            />
+          </Field>
+          <Field label="Email">
+            <input
+              value={c.email || ""}
+              placeholder="Her email"
+              onChange={(e) => patch(c.id, { email: e.target.value })}
+            />
+          </Field>
         </div>
       ) : (
         <div className="ledger flat">
@@ -915,6 +929,12 @@ function Details({ c, patch }) {
           <div><span>Type</span><b>{c.type || "—"}</b></div>
           <div><span>Occasion</span><b>{c.occasion || "—"}</b></div>
           <div><span>City</span><b>{c.city || "—"}</b></div>
+          {(c.phone || c.email) && (
+            <>
+              <div><span>Phone</span><b>{c.phone || "—"}</b></div>
+              <div><span>Email</span><b>{c.email || "—"}</b></div>
+            </>
+          )}
         </div>
       )}
     </>
