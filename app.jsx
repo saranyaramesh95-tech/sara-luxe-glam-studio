@@ -192,7 +192,64 @@ I'll be arriving at {time} to {location}. Come with a clean, moisturized face, a
 
 Anything you want to go over before then, just message me.`,
   },
+  {
+    id: "v1",
+    kind: "vendor",
+    name: "Vendor — team already sorted",
+    when: "Outfits, jewellery, anyone lending pieces. Name who's in — it makes it real.",
+    body: `Hi! I'm planning a bridal shoot and would love to feature your [outfits / jewellery]!
+
+Are you open to a collaboration? Our team is already locked in:
+
+Model: @[handle]
+Photographer: @[handle]
+
+If you're interested, I'd love to drop our mood board in your inbox!`,
+  },
+  {
+    id: "v2",
+    kind: "vendor",
+    name: "Vendor — team not sorted yet",
+    when: "Same ask, earlier. Lead with the concept instead of the line-up.",
+    body: `Hi! I'm putting together a bridal shoot and would love to feature your [outfits / jewellery]!
+
+I'm building the team now and wanted to reach out early in case you'd like to be part of it. Everything would be credited and tagged, and you'd get all the images to use.
+
+Happy to send over the mood board if you're interested!`,
+  },
+  {
+    id: "v3",
+    kind: "vendor",
+    name: "Photographer — shoot pitch",
+    when: "You bring the artistry, they bring the camera. Say what's in it for them.",
+    body: `Hi! I'm a bridal hair and makeup artist in Austin and I'm planning a shoot — I love your work and would love to collaborate.
+
+I'd be handling hair, makeup and draping. Full creative input on the concept from both sides, and we'd both keep the images.
+
+Would you be interested? Happy to share the mood board.`,
+  },
+  {
+    id: "v4",
+    kind: "vendor",
+    name: "Model — shoot pitch",
+    when: "Short. Tell her the date, the look, and what she gets.",
+    body: `Hi! I'm a bridal hair and makeup artist and I'm putting together a shoot — I think you'd be perfect for it.
+
+It'd be [date], around [x] hours, [location]. Full bridal hair and makeup, and you'd get all the images for your portfolio.
+
+Would you be up for it?`,
+  },
+  {
+    id: "v5",
+    kind: "vendor",
+    name: "Vendor — follow-up",
+    when: "One nudge, a week later. If nothing, leave it.",
+    body: `Hi! Just floating this back up in case it got buried — still would love to have you involved in the shoot.
+
+No worries at all if it's not the right fit. Happy to keep you in mind for the next one!`,
+  },
 ];
+
 
 /* ---------------- date + money ---------------- */
 
@@ -484,7 +541,12 @@ function SaraLuxeGlamStudio() {
       setClients(Array.isArray(c) ? c : []);
       setRates(r.services || DEFAULT_RATES);
       setSettings({ ...DEFAULT_SETTINGS, ...(r.settings || {}) });
-      setTemplates(Array.isArray(t) && t.length ? t : DEFAULT_TEMPLATES);
+      /* keep any wording she's edited, add templates she doesn't have yet */
+      const saved = Array.isArray(t) && t.length ? t : [];
+      const mergedTemplates = saved.length
+        ? [...saved, ...DEFAULT_TEMPLATES.filter((d) => !saved.some((x) => x.id === d.id))]
+        : DEFAULT_TEMPLATES;
+      setTemplates(mergedTemplates);
       setGigs(Array.isArray(g) ? g : []);
 
       /* wipe last week's / last month's ticks so the routine starts clean */
@@ -756,7 +818,12 @@ function SaraLuxeGlamStudio() {
                 if (Array.isArray(d.gigs)) writeGigs(d.gigs);
                 if (d.biz) writeBiz(d.biz);
                 if (Array.isArray(d.templates) && d.templates.length)
-                  writeTemplates(d.templates);
+                  writeTemplates([
+                    ...d.templates,
+                    ...DEFAULT_TEMPLATES.filter(
+                      (x) => !d.templates.some((y) => y.id === x.id)
+                    ),
+                  ]);
                 writeRates(
                   Array.isArray(d.rates) && d.rates.length ? d.rates : rates,
                   { ...DEFAULT_SETTINGS, ...(d.settings || settings) }
@@ -1782,14 +1849,19 @@ function Messages({
   templates, writeTemplates, clients, msgClient, setMsgClient,
   totals, serviceLines, settings, trialOpen,
 }) {
-  const [sel, setSel] = useState(templates[0]?.id);
+  const [sel, setSel] = useState(null);
   const [copied, setCopied] = useState(null);
   const [editing, setEditing] = useState(false);
 
   const c = clients.find((x) => x.id === msgClient);
-  const tpl = templates.find((t) => t.id === sel) || templates[0];
+  const mode = msgClient === "v:any" ? "vendor" : "client";
+  const shown = templates.filter((t) =>
+    mode === "vendor" ? t.kind === "vendor" : t.kind !== "vendor"
+  );
+  const tpl = shown.find((t) => t.id === sel) || shown[0];
 
   const fill = (body) => {
+    if (mode === "vendor") return body;
     if (!c) return body;
     const t = totals(c);
     const map = {
@@ -1835,19 +1907,28 @@ function Messages({
       <div className="pickrow">
         <label className="field wide">
           <span>Writing to</span>
-          <select value={msgClient} onChange={(e) => setMsgClient(e.target.value)}>
+          <select
+            value={msgClient}
+            onChange={(e) => {
+              setMsgClient(e.target.value);
+              setSel(null);
+            }}
+          >
             <option value="">Nobody — show the blank version</option>
-            {clients.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name} · {STAGES[x.stage]}
-              </option>
-            ))}
+            <optgroup label="Clients">
+              {clients.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} · {STAGES[x.stage]}
+                </option>
+              ))}
+            </optgroup>
+            <option value="v:any">Vendor — collaboration</option>
           </select>
         </label>
       </div>
 
       <div className="tpl-list">
-        {templates.map((t) => (
+        {shown.map((t) => (
           <button
             key={t.id}
             className={t.id === sel ? "tpl on" : "tpl"}
@@ -1891,7 +1972,9 @@ function Messages({
           )}
           {!c && (
             <div className="hint">
-              Pick someone above and the blanks fill in with her real numbers.
+              {mode === "vendor"
+                ? "Square brackets are yours to fill in — these don't auto-fill."
+                : "Pick someone above and the blanks fill in with her real numbers."}
             </div>
           )}
         </div>
