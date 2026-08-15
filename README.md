@@ -105,15 +105,38 @@ computer (the one you already have, e.g. in Downloads). That one-time step
 copies your existing clients, rates, templates, and notes into Supabase.
 From then on, every device you sign into stays in sync automatically.
 
+### 7. Turn on automatic backups (optional but recommended)
+
+In Supabase SQL Editor, run this once to create a private storage bucket
+for backups:
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('backups', 'backups', false)
+on conflict (id) do nothing;
+
+create policy "Users manage their own backup files"
+on storage.objects
+for all
+using (bucket_id = 'backups' and (storage.foldername(name))[1] = auth.uid()::text)
+with check (bucket_id = 'backups' and (storage.foldername(name))[1] = auth.uid()::text);
+```
+
+That's it — no further setup. From then on, every time you open the app
+and it's been 7+ days since the last automatic backup, it quietly saves a
+fresh dated snapshot to that bucket, and deletes any of its own backups
+older than 90 days. It's silent — no button, no popup — check
+**Supabase → Storage → backups** if you ever want to see what's there.
+
 ## Day to day
 
 - Open the GitHub Pages URL on your phone or laptop, sign in once (it'll
   stay signed in), and use the app as normal.
 - Every save now goes straight to Supabase, so the other device sees it
   next time it loads.
-- Keep downloading occasional backups from inside the app (its built-in
-  **Download backup** button) as a safety net — cheap insurance, costs you
-  one tap.
+- Automatic weekly backups happen on their own (see step 7). You can still
+  use the app's built-in **Download backup** button any time you want a
+  copy in hand immediately.
 
 ## If something looks broken
 

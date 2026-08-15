@@ -115,6 +115,12 @@ function Root() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  useEffect2(() => {
+    if (session && window.runAutoBackupIfDue) {
+      window.runAutoBackupIfDue();
+    }
+  }, [session]);
+
   if (!window.supabaseClient) {
     return (
       <div
