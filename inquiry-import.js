@@ -74,7 +74,9 @@
 
       const existing = (await window.cloudStore.get("slg:clients")) || [];
       const newClients = rows.map(inquiryToClient);
-      await window.cloudStore.set("slg:clients", [...existing, ...newClients]);
+      // Newest first, so among same-priority fresh inquiries the latest one
+      // still lands on top.
+      await window.cloudStore.set("slg:clients", [...newClients, ...existing]);
 
       const { error: markErr } = await window.supabaseClient
         .from("inquiries")

@@ -646,8 +646,13 @@ function SaraLuxeGlamStudio() {
     const score = (c) => {
       const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
       const overdue = c.stage < 3 && nudge !== null && nudge <= 0;
+      /* Brand new, not-yet-priced inquiry — surface it right under anything
+         overdue so a fresh lead never gets buried under dated bookings. */
+      const freshInquiry = c.stage === 0 && !c.eventDate;
       const ev = c.eventDate ? daysUntil(c.eventDate) : 99999;
-      return (overdue ? -100000 : 0) + (ev < 0 ? 90000 : ev);
+      if (overdue) return -100000;
+      if (freshInquiry) return -90000;
+      return ev < 0 ? 90000 : ev;
     };
     return [...clients].sort((a, b) => score(a) - score(b));
   }, [clients]);
