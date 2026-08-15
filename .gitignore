@@ -1,0 +1,8 @@
+# Local-only preview harness — loads your real backup unauthenticated,
+# never meant to be deployed or pushed.
+.preview-only/
+
+# Real client data. This repo is public — client PII never belongs here.
+# It lives in Supabase instead; use the app's "Restore" button (uploading
+# straight from your computer) to load it in the first time. See README.md.
+backup/

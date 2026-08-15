@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Sara Luxe Glam" />
+<meta name="theme-color" content="#111111" />
+<title>Sara Luxe Glam Studio</title>
+<style>
+  html, body { background: #fdfcfb; color: #222; margin: 0; min-height: 100%; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="padding:40px;font-family:sans-serif;color:#777;">Loading…</div>
+</div>
+
+<!-- Your Supabase project URL + anon key (safe to be public; see README.md) -->
+<script src="config.js"></script>
+
+<!-- React + Babel (in-browser JSX compiler — no build step needed) + Supabase client -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<!-- Sets up window.cloudStore (Supabase-backed) and window.supabaseClient -->
+<script src="cloud-store.js"></script>
+
+<!-- The app itself, then the login gate + render call.
+     Loaded manually (not via Babel's auto-scan script tags) and forced to
+     the "classic" JSX runtime, because Babel's newer default runtime emits
+     an ES `import` that can't run in a plain <script>. -->
+<script src="load-jsx.js"></script>
+</body>
+</html>
