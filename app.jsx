@@ -655,11 +655,17 @@ function SaraLuxeGlamStudio() {
       const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
       const overdue = c.stage < 3 && nudge !== null && nudge <= 0;
       /* Brand new, not-yet-priced inquiry — surface it right under anything
-         overdue so a fresh lead never gets buried under dated bookings. */
+         overdue so a fresh lead never gets buried under dated bookings.
+         Ranked by how recently it came in, newest first — not just by
+         list position, which isn't reliable to sort by. */
       const freshInquiry = c.stage === 0 && !c.eventDate;
       const ev = c.eventDate ? daysUntil(c.eventDate) : 99999;
       if (overdue) return -100000;
-      if (freshInquiry) return -90000;
+      if (freshInquiry) {
+        const d = inquiryOf(c);
+        const t = d ? parseDate(d).getTime() : 0;
+        return -90000 - t / 1e11; // more recent inquiryDate → more negative → sorts first
+      }
       return ev < 0 ? 90000 : ev;
     };
     return [...clients].sort((a, b) => score(a) - score(b));
@@ -1262,99 +1268,6 @@ function TaskRollup({ clients, patch }) {
   );
 }
 
-/* ---------------- inquiry stats ---------------- */
-
-function InquiryStats({ clients, bucket }) {
-  const [open, setOpen] = useState(false);
-
-  const stats = useMemo(() => {
-    const now = new Date();
-    const thisMonth = monthKey(now);
-    const thisYear = String(now.getFullYear());
-
-    const tally = (list) => ({
-      total: list.length,
-      booked: list.filter((c) => c.stage >= 3 && bucket(c) !== "lost").length,
-      lost: list.filter((c) => bucket(c) === "lost").length,
-    });
-
-    const withDate = clients
-      .map((c) => ({ c, d: inquiryOf(c) }))
-      .filter((x) => x.d);
-
-    const inMonth = withDate.filter((x) => x.d.slice(0, 7) === thisMonth).map((x) => x.c);
-    const inYear = withDate.filter((x) => x.d.slice(0, 4) === thisYear).map((x) => x.c);
-
-    const reasonCounts = {};
-    clients.forEach((c) => {
-      if (bucket(c) === "lost" && c.lostReason) {
-        reasonCounts[c.lostReason] = (reasonCounts[c.lostReason] || 0) + 1;
-      }
-    });
-
-    return { month: tally(inMonth), year: tally(inYear), reasonCounts };
-  }, [clients, bucket]);
-
-  const reasonEntries = Object.entries(stats.reasonCounts).sort((a, b) => b[1] - a[1]);
-
-  return (
-    <div className="rollup" style={{ marginBottom: 10 }}>
-      <button className="rollup-head" onClick={() => setOpen(!open)}>
-        <span>
-          {stats.month.total} inquir{stats.month.total === 1 ? "y" : "ies"} this month ·{" "}
-          {stats.year.total} this year
-        </span>
-        <span className="rollup-caret">{open ? "–" : "+"}</span>
-      </button>
-      {open && (
-        <div style={{ padding: "10px 14px 14px" }}>
-          <div className="ledger flat">
-            <div>
-              <span>This month</span>
-              <b>{stats.month.total}</b>
-            </div>
-            <div>
-              <span>Booked</span>
-              <b>{stats.month.booked}</b>
-            </div>
-            <div>
-              <span>Didn't book</span>
-              <b>{stats.month.lost}</b>
-            </div>
-            <div>
-              <span>This year</span>
-              <b>{stats.year.total}</b>
-            </div>
-            <div>
-              <span>Booked</span>
-              <b>{stats.year.booked}</b>
-            </div>
-            <div>
-              <span>Didn't book</span>
-              <b>{stats.year.lost}</b>
-            </div>
-          </div>
-          {reasonEntries.length > 0 && (
-            <>
-              <div className="sub" style={{ marginTop: 12 }}>
-                Why they didn't book (all time)
-              </div>
-              <div className="ledger flat">
-                {reasonEntries.map(([reason, n]) => (
-                  <div key={reason}>
-                    <span>{reason}</span>
-                    <b>{n}</b>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ---------------- pipeline ---------------- */
 
 function Pipeline({
@@ -1373,8 +1286,6 @@ function Pipeline({
 
   return (
     <>
-      <InquiryStats clients={clients} bucket={bucket} />
-
       {filter === "active" && <TaskRollup clients={clients} patch={patch} />}
 
       <div className="tpl-list">
@@ -1830,7 +1741,9 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
   });
 
   const mine = clients
-    .filter((c) => c.eventDate && c.eventDate.slice(0, 7) === key)
+    .filter(
+      (c) => c.eventDate && c.eventDate.slice(0, 7) === key && c.archived !== "lost"
+    )
     .map((c) => ({
       id: c.id,
       date: c.eventDate,
