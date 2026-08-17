@@ -682,6 +682,7 @@ function SaraLuxeGlamStudio() {
       retainerMonth: null,
       notes: "",
       todos: [],
+      preWeddingTodos: seedPreWeddingTodos(),
       inquiryDate: isoOf(new Date()),
       nudgeOn: isoOf(new Date(Date.now() + 3 * 86400000)),
       readyTime: "",
@@ -1144,9 +1145,25 @@ const QUICK = [
   "Book her trial date",
 ];
 
+/* Seeded onto every new client. Stays out of the way until 2 weeks
+   before her event date, then pops into the main "promised" rollup. */
+const TWO_WEEK_TASKS = [
+  "Send out timeline",
+  "Sort inspo pictures",
+  "Follow up for balance",
+  "Follow the checklist before the day",
+];
+const seedPreWeddingTodos = () =>
+  TWO_WEEK_TASKS.map((t, i) => ({
+    id: "pw" + Date.now() + i,
+    text: t,
+    done: false,
+  }));
+
 function Promised({ c, patch }) {
   const [text, setText] = useState("");
   const todos = c.todos || [];
+  const preWedding = c.preWeddingTodos || [];
 
   const write = (next) => patch(c.id, { todos: next });
   const add = (t) => {
@@ -1154,6 +1171,14 @@ function Promised({ c, patch }) {
     if (!v) return;
     write([...todos, { id: "t" + Date.now(), text: v, done: false }]);
     setText("");
+  };
+  const moveToTwoWeeks = (id) => {
+    const item = todos.find((x) => x.id === id);
+    if (!item) return;
+    patch(c.id, {
+      todos: todos.filter((x) => x.id !== id),
+      preWeddingTodos: [...preWedding, item],
+    });
   };
 
   const open = todos.filter((t) => !t.done);
@@ -1194,6 +1219,14 @@ function Promised({ c, patch }) {
             />
           </span>
           <button
+            className="linkbtn"
+            style={{ fontSize: 11 }}
+            onClick={() => moveToTwoWeeks(t.id)}
+            title="Move to the 2-weeks-before list"
+          >
+            → 2wk
+          </button>
+          <button
             className="todo-x"
             aria-label="Remove"
             onClick={() => write(todos.filter((x) => x.id !== t.id))}
@@ -1228,13 +1261,124 @@ function Promised({ c, patch }) {
   );
 }
 
+function PreWeddingChecklist({ c, patch }) {
+  const [text, setText] = useState("");
+  const items = c.preWeddingTodos || [];
+  const todos = c.todos || [];
+
+  const write = (next) => patch(c.id, { preWeddingTodos: next });
+  const add = (t) => {
+    const v = (t || "").trim();
+    if (!v) return;
+    write([...items, { id: "pw" + Date.now(), text: v, done: false }]);
+    setText("");
+  };
+  const moveToNormal = (id) => {
+    const item = items.find((x) => x.id === id);
+    if (!item) return;
+    patch(c.id, {
+      preWeddingTodos: items.filter((x) => x.id !== id),
+      todos: [...todos, item],
+    });
+  };
+
+  const dLeft = c.eventDate ? daysUntil(c.eventDate) : null;
+  const active = dLeft !== null && dLeft <= 14;
+  const open = items.filter((t) => !t.done);
+  const done = items.filter((t) => t.done);
+
+  return (
+    <>
+      <div className="sub">
+        2 weeks before her day{open.length ? ` · ${open.length} open` : ""}
+      </div>
+      <div className="hint">
+        {active
+          ? "Within 2 weeks now — these are showing in your main promised list too."
+          : c.eventDate
+          ? `Stays out of the way until 2 weeks before ${fmtDate(c.eventDate)}.`
+          : "Stays out of the way until 2 weeks before her event date."}
+      </div>
+
+      {items.length === 0 && (
+        <div className="hint">Nothing here yet.</div>
+      )}
+
+      {[...open, ...done].map((t) => (
+        <div key={t.id} className={t.done ? "todo done" : "todo"}>
+          <button
+            className="todo-tick"
+            aria-label={t.done ? "Mark not done" : "Mark done"}
+            onClick={() =>
+              write(
+                items.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x))
+              )
+            }
+          >
+            {t.done ? "✓" : ""}
+          </button>
+          <span className="todo-text">
+            <EditText
+              value={t.text}
+              onSave={(v) =>
+                write(items.map((x) => (x.id === t.id ? { ...x, text: v } : x)))
+              }
+            />
+          </span>
+          <button
+            className="linkbtn"
+            style={{ fontSize: 11 }}
+            onClick={() => moveToNormal(t.id)}
+            title="Move to the normal promised list"
+          >
+            → normal
+          </button>
+          <button
+            className="todo-x"
+            aria-label="Remove"
+            onClick={() => write(items.filter((x) => x.id !== t.id))}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+
+      <div className="todo-add">
+        <input
+          value={text}
+          placeholder="Something for the 2-weeks-out list…"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add(text);
+          }}
+        />
+        <button className="slg-btn" disabled={!text.trim()} onClick={() => add(text)}>
+          Add
+        </button>
+      </div>
+    </>
+  );
+}
+
 function TaskRollup({ clients, patch }) {
   const [open, setOpen] = useState(true);
-  const items = clients.flatMap((c) =>
-    (c.todos || [])
+  const items = clients.flatMap((c) => {
+    const normal = (c.todos || [])
       .filter((t) => !t.done)
-      .map((t) => ({ c, t }))
-  );
+      .map((t) => ({ c, t, key: "todos" }));
+
+    /* The 2-weeks-before list only joins this rollup once it's actually
+       within 2 weeks of her event date — not before. */
+    const dLeft = c.eventDate ? daysUntil(c.eventDate) : null;
+    const withinTwoWeeks = dLeft !== null && dLeft <= 14;
+    const preWedding = withinTwoWeeks
+      ? (c.preWeddingTodos || [])
+          .filter((t) => !t.done)
+          .map((t) => ({ c, t, key: "preWeddingTodos" }))
+      : [];
+
+    return [...normal, ...preWedding];
+  });
   if (items.length === 0) return null;
 
   return (
@@ -1246,14 +1390,14 @@ function TaskRollup({ clients, patch }) {
         <span className="rollup-caret">{open ? "–" : "+"}</span>
       </button>
       {open &&
-        items.map(({ c, t }) => (
+        items.map(({ c, t, key }) => (
           <div key={c.id + t.id} className="todo">
             <button
               className="todo-tick"
               aria-label="Mark done"
               onClick={() =>
                 patch(c.id, {
-                  todos: (c.todos || []).map((x) =>
+                  [key]: (c[key] || []).map((x) =>
                     x.id === t.id ? { ...x, done: true } : x
                   ),
                 })
@@ -1578,6 +1722,8 @@ function Pipeline({
                 <SecondArtists c={c} patch={patch} clientTotal={t.total} />
 
                 <Promised c={c} patch={patch} />
+
+                <PreWeddingChecklist c={c} patch={patch} />
 
                 <div className="sub">Notes</div>
                 <textarea

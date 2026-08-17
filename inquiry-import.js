@@ -20,6 +20,22 @@
     ).padStart(2, "0")}`;
   }
 
+  // Same defaults as app.jsx's seedPreWeddingTodos — kept in sync manually
+  // since this file loads separately.
+  const TWO_WEEK_TASKS = [
+    "Send out timeline",
+    "Sort inspo pictures",
+    "Follow up for balance",
+    "Follow the checklist before the day",
+  ];
+  function seedPreWeddingTodos() {
+    return TWO_WEEK_TASKS.map((t, i) => ({
+      id: "pw" + Date.now() + i,
+      text: t,
+      done: false,
+    }));
+  }
+
   function inquiryToClient(row) {
     const a = row.answers || {};
     const mapped = EVENT_TYPE_MAP[a.eventType] || { type: "Special event", occasion: a.eventType || "" };
@@ -53,6 +69,7 @@
       retainerMonth: null,
       notes: noteLines.join("\n"),
       todos: [],
+      preWeddingTodos: seedPreWeddingTodos(),
       inquiryDate: isoOf(today),
       nudgeOn: isoOf(new Date(today.getTime() + 3 * 86400000)),
       readyTime: "",
