@@ -663,16 +663,17 @@ function SaraLuxeGlamStudio() {
   const sorted = useMemo(() => {
     const score = (c) => {
       const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
-      /* Only actually-past dates count as overdue — today clears the alert
-         the moment you set/update it, not a day later. */
-      const overdue = c.stage < 3 && nudge !== null && nudge < 0;
+      /* Due today or already past both stay top-of-list (she still needs to
+         follow up) — separate from the "follow up now" alert tag itself,
+         which only lights up once it's genuinely overdue. */
+      const dueForSort = c.stage < 3 && nudge !== null && nudge <= 0;
       /* Brand new, not-yet-priced inquiry — surface it right under anything
          overdue so a fresh lead never gets buried under dated bookings.
          Ranked by how recently it came in, newest first — not just by
          list position, which isn't reliable to sort by. */
       const freshInquiry = c.stage === 0 && !c.eventDate;
       const ev = c.eventDate ? daysUntil(c.eventDate) : 99999;
-      if (overdue) return -100000;
+      if (dueForSort) return -100000;
       if (freshInquiry) {
         const d = inquiryOf(c);
         const t = d ? parseDate(d).getTime() : 0;
