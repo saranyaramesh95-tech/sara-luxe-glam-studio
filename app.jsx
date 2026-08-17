@@ -546,7 +546,17 @@ function SaraLuxeGlamStudio() {
         load(KEYS.gigs, []),
         load(KEYS.biz, DEFAULT_BIZ),
       ]);
-      setClients(Array.isArray(c) ? c : []);
+      /* one-time backfill: give any client from before this feature existed
+         the same 2-weeks-before checklist new clients get automatically */
+      const rawClients = Array.isArray(c) ? c : [];
+      let backfilled = false;
+      const withPreWedding = rawClients.map((cl) => {
+        if (cl.preWeddingTodos !== undefined) return cl;
+        backfilled = true;
+        return { ...cl, preWeddingTodos: seedPreWeddingTodos() };
+      });
+      setClients(withPreWedding);
+      if (backfilled) save(KEYS.clients, withPreWedding);
       setRates(r.services || DEFAULT_RATES);
       setSettings({ ...DEFAULT_SETTINGS, ...(r.settings || {}) });
       /* keep any wording she's edited, add templates she doesn't have yet */
