@@ -1787,7 +1787,13 @@ function Pipeline({
                       </button>
                       <button
                         className="slg-btn ghost"
-                        onClick={() => patch(c.id, { archived: "lost" })}
+                        onClick={() =>
+                          patch(c.id, {
+                            archived: "lost",
+                            todos: [],
+                            preWeddingTodos: [],
+                          })
+                        }
                       >
                         Didn't book
                       </button>
