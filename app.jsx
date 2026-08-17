@@ -454,6 +454,14 @@ const VENDOR_KINDS = [
 
 const CLIENT_TYPES = ["Bridal", "Special event", "Class", "Shoot"];
 
+const LOST_REASONS = [
+  "Date already booked",
+  "Price",
+  "Went with someone else",
+  "Never replied",
+  "Other",
+];
+
 const DEFAULT_BIZ = {
   goals: { yearRevenue: 0, yearBookings: 0, monthRevenue: 0, monthBookings: 0 },
   myGoals: [],
@@ -1254,6 +1262,99 @@ function TaskRollup({ clients, patch }) {
   );
 }
 
+/* ---------------- inquiry stats ---------------- */
+
+function InquiryStats({ clients, bucket }) {
+  const [open, setOpen] = useState(false);
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    const thisMonth = monthKey(now);
+    const thisYear = String(now.getFullYear());
+
+    const tally = (list) => ({
+      total: list.length,
+      booked: list.filter((c) => c.stage >= 3 && bucket(c) !== "lost").length,
+      lost: list.filter((c) => bucket(c) === "lost").length,
+    });
+
+    const withDate = clients
+      .map((c) => ({ c, d: inquiryOf(c) }))
+      .filter((x) => x.d);
+
+    const inMonth = withDate.filter((x) => x.d.slice(0, 7) === thisMonth).map((x) => x.c);
+    const inYear = withDate.filter((x) => x.d.slice(0, 4) === thisYear).map((x) => x.c);
+
+    const reasonCounts = {};
+    clients.forEach((c) => {
+      if (bucket(c) === "lost" && c.lostReason) {
+        reasonCounts[c.lostReason] = (reasonCounts[c.lostReason] || 0) + 1;
+      }
+    });
+
+    return { month: tally(inMonth), year: tally(inYear), reasonCounts };
+  }, [clients, bucket]);
+
+  const reasonEntries = Object.entries(stats.reasonCounts).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <div className="rollup" style={{ marginBottom: 10 }}>
+      <button className="rollup-head" onClick={() => setOpen(!open)}>
+        <span>
+          {stats.month.total} inquir{stats.month.total === 1 ? "y" : "ies"} this month ·{" "}
+          {stats.year.total} this year
+        </span>
+        <span className="rollup-caret">{open ? "–" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ padding: "10px 14px 14px" }}>
+          <div className="ledger flat">
+            <div>
+              <span>This month</span>
+              <b>{stats.month.total}</b>
+            </div>
+            <div>
+              <span>Booked</span>
+              <b>{stats.month.booked}</b>
+            </div>
+            <div>
+              <span>Didn't book</span>
+              <b>{stats.month.lost}</b>
+            </div>
+            <div>
+              <span>This year</span>
+              <b>{stats.year.total}</b>
+            </div>
+            <div>
+              <span>Booked</span>
+              <b>{stats.year.booked}</b>
+            </div>
+            <div>
+              <span>Didn't book</span>
+              <b>{stats.year.lost}</b>
+            </div>
+          </div>
+          {reasonEntries.length > 0 && (
+            <>
+              <div className="sub" style={{ marginTop: 12 }}>
+                Why they didn't book (all time)
+              </div>
+              <div className="ledger flat">
+                {reasonEntries.map(([reason, n]) => (
+                  <div key={reason}>
+                    <span>{reason}</span>
+                    <b>{n}</b>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- pipeline ---------------- */
 
 function Pipeline({
@@ -1272,6 +1373,8 @@ function Pipeline({
 
   return (
     <>
+      <InquiryStats clients={clients} bucket={bucket} />
+
       {filter === "active" && <TaskRollup clients={clients} patch={patch} />}
 
       <div className="tpl-list">
@@ -1369,6 +1472,9 @@ function Pipeline({
               ) : (
                 nudge !== null &&
                 c.stage < 3 && <span className="chip">nudge in {nudge}d</span>
+              )}
+              {c.archived === "lost" && c.lostReason && (
+                <span className="chip">{c.lostReason}</span>
               )}
             </div>
 
@@ -1569,6 +1675,27 @@ function Pipeline({
                   placeholder="What she said, what she's unsure about, inspo she sent…"
                   onChange={(e) => patch(c.id, { notes: e.target.value })}
                 />
+
+                {bucket(c) === "lost" && (
+                  <>
+                    <div className="sub">Why didn't she book?</div>
+                    <div className="hint">
+                      Still counts toward your inquiry totals — this is just
+                      for tracking patterns over time.
+                    </div>
+                    <Field label="Reason">
+                      <select
+                        value={c.lostReason || ""}
+                        onChange={(e) => patch(c.id, { lostReason: e.target.value })}
+                      >
+                        <option value="">— pick one —</option>
+                        {LOST_REASONS.map((r) => (
+                          <option key={r}>{r}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </>
+                )}
 
                 <div className="card-actions">
                   <button className="slg-btn" onClick={() => goMessage(c.id)}>
