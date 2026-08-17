@@ -663,7 +663,9 @@ function SaraLuxeGlamStudio() {
   const sorted = useMemo(() => {
     const score = (c) => {
       const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
-      const overdue = c.stage < 3 && nudge !== null && nudge <= 0;
+      /* Only actually-past dates count as overdue — today clears the alert
+         the moment you set/update it, not a day later. */
+      const overdue = c.stage < 3 && nudge !== null && nudge < 0;
       /* Brand new, not-yet-priced inquiry — surface it right under anything
          overdue so a fresh lead never gets buried under dated bookings.
          Ranked by how recently it came in, newest first — not just by
@@ -1373,6 +1375,12 @@ function PreWeddingChecklist({ c, patch }) {
 function TaskRollup({ clients, patch }) {
   const [open, setOpen] = useState(true);
   const items = clients.flatMap((c) => {
+    /* Once a client is marked Done or Didn't book, her open tasks drop out
+       of this rollup — the relationship's over, no need to keep chasing
+       them here. They're still on her own card if you open it. */
+    const concluded = c.archived === "lost" || c.archived === "done" || c.stage === 5;
+    if (concluded) return [];
+
     const normal = (c.todos || [])
       .filter((t) => !t.done)
       .map((t) => ({ c, t, key: "todos" }));
@@ -1491,7 +1499,7 @@ function Pipeline({
       {shown.map((c) => {
         const t = totals(c);
         const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : null;
-        const overdue = c.stage < 3 && nudge !== null && nudge <= 0;
+        const overdue = c.stage < 3 && nudge !== null && nudge < 0;
         const dLeft = c.eventDate ? daysUntil(c.eventDate) : null;
         const open = openId === c.id;
         return (
