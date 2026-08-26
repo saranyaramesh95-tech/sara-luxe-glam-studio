@@ -4,7 +4,10 @@
    static site while still using .jsx files directly. */
 (async function () {
   async function runBabelFile(path) {
-    const res = await fetch(path);
+    // Always fetch the real latest file — never a cached copy. Without
+    // this, a phone/browser can keep running yesterday's app.jsx for a
+    // long time after a fix is actually live.
+    const res = await fetch(path + "?t=" + Date.now(), { cache: "no-store" });
     if (!res.ok) throw new Error("Could not load " + path);
     const source = await res.text();
     const { code } = Babel.transform(source, {
