@@ -12,6 +12,12 @@ const STAGES = [
   "Done",
 ];
 
+/* A follow-up only counts as genuinely overdue — for both the "follow up
+   now" alert tag and top-of-list sort priority — once it's this many days
+   past its date. Setting/updating the date to today (or the next couple
+   of days) does not trigger it. */
+const FOLLOWUP_GRACE_DAYS = -3;
+
 const DEFAULT_RATES = [
   { id: "p0", name: "Event hair & makeup package", price: 285 },
   { id: "p0b", name: "Event hair, makeup & draping package", price: 360 },
@@ -660,14 +666,15 @@ function SaraLuxeGlamStudio() {
   const trialOpen = Math.max(0, 2 - trialTaken);
 
   /* ---- sorting ----
-     Newest added first, full stop — except anything due for a follow-up
-     (today or already past) still jumps to the very top, since that's
-     more urgent than recency. Event date proximity no longer factors in. */
+     Newest added first, full stop — except a follow-up that's genuinely
+     overdue (3+ days past its date, same threshold as the alert tag)
+     still jumps to the very top. A follow-up due today or 1-2 days past
+     no longer overrides recency. Event date proximity doesn't factor in. */
   const sorted = useMemo(() => {
     const score = (c) => {
       const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
-      const dueForSort = c.stage < 3 && nudge !== null && nudge <= 0;
-      if (dueForSort) return -100000;
+      const overdue = c.stage < 3 && nudge !== null && nudge <= FOLLOWUP_GRACE_DAYS;
+      if (overdue) return -100000;
       const d = inquiryOf(c);
       const t = d ? parseDate(d).getTime() : 0;
       return -t / 1e11; // more recently added → more negative → sorts first
@@ -1491,7 +1498,7 @@ function Pipeline({
       {shown.map((c) => {
         const t = totals(c);
         const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : null;
-        const overdue = c.stage < 3 && nudge !== null && nudge < 0;
+        const overdue = c.stage < 3 && nudge !== null && nudge <= FOLLOWUP_GRACE_DAYS;
         const dLeft = c.eventDate ? daysUntil(c.eventDate) : null;
         const open = openId === c.id;
         return (
