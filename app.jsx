@@ -659,27 +659,18 @@ function SaraLuxeGlamStudio() {
   ).length;
   const trialOpen = Math.max(0, 2 - trialTaken);
 
-  /* ---- sorting ---- */
+  /* ---- sorting ----
+     Newest added first, full stop — except anything due for a follow-up
+     (today or already past) still jumps to the very top, since that's
+     more urgent than recency. Event date proximity no longer factors in. */
   const sorted = useMemo(() => {
     const score = (c) => {
       const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
-      /* Due today or already past both stay top-of-list (she still needs to
-         follow up) — separate from the "follow up now" alert tag itself,
-         which only lights up once it's genuinely overdue. */
       const dueForSort = c.stage < 3 && nudge !== null && nudge <= 0;
-      /* Brand new, not-yet-priced inquiry — surface it right under anything
-         overdue so a fresh lead never gets buried under dated bookings.
-         Ranked by how recently it came in, newest first — not just by
-         list position, which isn't reliable to sort by. */
-      const freshInquiry = c.stage === 0 && !c.eventDate;
-      const ev = c.eventDate ? daysUntil(c.eventDate) : 99999;
       if (dueForSort) return -100000;
-      if (freshInquiry) {
-        const d = inquiryOf(c);
-        const t = d ? parseDate(d).getTime() : 0;
-        return -90000 - t / 1e11; // more recent inquiryDate → more negative → sorts first
-      }
-      return ev < 0 ? 90000 : ev;
+      const d = inquiryOf(c);
+      const t = d ? parseDate(d).getTime() : 0;
+      return -t / 1e11; // more recently added → more negative → sorts first
     };
     return [...clients].sort((a, b) => score(a) - score(b));
   }, [clients]);
