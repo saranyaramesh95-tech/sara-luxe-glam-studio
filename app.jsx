@@ -496,6 +496,7 @@ const DEFAULT_BIZ = {
     wk: "",
     mo: "",
   },
+  routineNotes: "",
 };
 
 /* ---------------- storage ---------------- */
@@ -3916,6 +3917,15 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             rename={(id, t) => rRename("monthly", id, t)}
             renameSub={(pid, sid, t) => rRenameSub("monthly", pid, sid, t)}
             onAdd={(t) => rAdd("monthly", t)}
+          />
+
+          <div className="sub">Notes</div>
+          <div className="hint">Anything at all — no structure, just space to write.</div>
+          <textarea
+            rows={5}
+            value={biz.routineNotes || ""}
+            placeholder="Whatever's on your mind…"
+            onChange={(e) => writeBiz({ ...biz, routineNotes: e.target.value })}
           />
         </>
       )}
