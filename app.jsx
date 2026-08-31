@@ -545,7 +545,7 @@ function SaraLuxeGlamStudio() {
   const [biz, setBiz] = useState(DEFAULT_BIZ);
 
   useEffect(() => {
-    (async () => {
+    const loadAll = async () => {
       const [c, r, t, g, b] = await Promise.all([
         load(KEYS.clients, SEED_CLIENTS),
         load(KEYS.rates, { services: DEFAULT_RATES, settings: DEFAULT_SETTINGS }),
@@ -594,7 +594,23 @@ function SaraLuxeGlamStudio() {
       merged.routine = { ...merged.routine, done, wk: nowWk, mo: nowMo };
       setBiz(merged);
       setReady(true);
-    })();
+    };
+
+    loadAll();
+
+    /* Coming back to an already-open tab (switching apps, waking your
+       phone, alt-tabbing back) doesn't reload the page, so without this
+       it would keep showing whatever was loaded last — even if you'd
+       since made changes on another device. Pull fresh data instead. */
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadAll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, []);
 
   const writeBiz = (next) => {
