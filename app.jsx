@@ -521,11 +521,32 @@ async function load(key, fallback) {
     return fallback;
   }
 }
+/* Tracks in-flight saves so the app can show "Saving…" and, more
+   importantly, warn before the tab/app is closed with a save still not
+   confirmed on the server — closing mid-save silently loses that change. */
+window.__pendingSaves = 0;
+function announceSaveStatus() {
+  window.dispatchEvent(
+    new CustomEvent("slg-save-status", { detail: { pending: window.__pendingSaves } })
+  );
+}
+window.addEventListener("beforeunload", (e) => {
+  if (window.__pendingSaves > 0) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
 async function save(key, value) {
+  window.__pendingSaves++;
+  announceSaveStatus();
   try {
     await window.cloudStore.set(key, value);
   } catch (e) {
     console.error("Could not save", key, e);
+  } finally {
+    window.__pendingSaves--;
+    announceSaveStatus();
   }
 }
 

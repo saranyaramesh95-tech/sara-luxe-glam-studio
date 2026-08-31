@@ -178,9 +178,11 @@ function Root() {
           right: 8,
           zIndex: 1000,
           display: "flex",
+          alignItems: "center",
           gap: 6,
         }}
       >
+        <SaveStatus />
         <NotificationToggle />
         <button
           onClick={() => window.supabaseClient.auth.signOut()}
@@ -199,6 +201,43 @@ function Root() {
       <SaraLuxeGlamStudio />
     </div>
   );
+}
+
+function SaveStatus() {
+  const [pending, setPending] = useState2(window.__pendingSaves || 0);
+  const [showSaved, setShowSaved] = useState2(false);
+
+  useEffect2(() => {
+    let savedTimer = null;
+    const onStatus = (e) => {
+      const p = e.detail.pending;
+      setPending(p);
+      if (p === 0) {
+        setShowSaved(true);
+        clearTimeout(savedTimer);
+        savedTimer = setTimeout(() => setShowSaved(false), 2000);
+      }
+    };
+    window.addEventListener("slg-save-status", onStatus);
+    return () => {
+      window.removeEventListener("slg-save-status", onStatus);
+      clearTimeout(savedTimer);
+    };
+  }, []);
+
+  if (pending > 0) {
+    return (
+      <span style={{ fontSize: 12, color: "#a67c1d", fontWeight: 500 }}>
+        Saving…
+      </span>
+    );
+  }
+  if (showSaved) {
+    return (
+      <span style={{ fontSize: 12, color: "#3a7d44" }}>All changes saved</span>
+    );
+  }
+  return null;
 }
 
 function NotificationToggle() {
