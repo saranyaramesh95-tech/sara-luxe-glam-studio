@@ -116,12 +116,28 @@ function Root() {
   }, []);
 
   useEffect2(() => {
-    if (session && window.runAutoBackupIfDue) {
-      window.runAutoBackupIfDue();
-    }
-    if (session && window.runInquiryImportIfDue) {
-      window.runInquiryImportIfDue();
-    }
+    if (!session) return;
+
+    const checkForUpdates = () => {
+      if (window.runAutoBackupIfDue) window.runAutoBackupIfDue();
+      if (window.runInquiryImportIfDue) window.runInquiryImportIfDue();
+    };
+
+    checkForUpdates();
+
+    /* Previously these only ran once at sign-in, so a new website inquiry
+       arriving while the app was already open (not freshly reloaded)
+       wouldn't get pulled in until the next full close/reopen. Now
+       coming back to the tab re-checks too. */
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkForUpdates();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [session]);
 
   if (!window.supabaseClient) {
