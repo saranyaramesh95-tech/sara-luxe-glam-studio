@@ -623,9 +623,38 @@ function SaraLuxeGlamStudio() {
     save(KEYS.gigs, next);
   };
 
-  const writeClients = (next) => {
+  const writeClients = (next, opts = {}) => {
     setClients(next);
-    save(KEYS.clients, next);
+    if (opts.force) {
+      // Restoring a backup is a deliberate full replace — save exactly
+      // what was asked for, no merging.
+      save(KEYS.clients, next);
+      return;
+    }
+    (async () => {
+      /* Two devices can each be holding their own slightly-stale copy of
+         the whole client list. If this device hasn't refreshed since
+         another one added/imported a new client, a plain save here would
+         silently wipe that client out. Guard against that: check what's
+         actually in the cloud right now, and if it has any client this
+         device doesn't know about, keep it rather than lose it. */
+      try {
+        const latest = await load(KEYS.clients, []);
+        const latestArr = Array.isArray(latest) ? latest : [];
+        const nextIds = new Set(next.map((c) => c.id));
+        const missing = latestArr.filter((c) => !nextIds.has(c.id));
+        if (missing.length) {
+          const merged = [...next, ...missing];
+          setClients(merged);
+          save(KEYS.clients, merged);
+        } else {
+          save(KEYS.clients, next);
+        }
+      } catch (e) {
+        console.error("Could not check for newer clients before saving", e);
+        save(KEYS.clients, next);
+      }
+    })();
   };
   const writeRates = (services, s) => {
     setRates(services);
@@ -862,7 +891,7 @@ function SaraLuxeGlamStudio() {
               templates={templates}
               biz={biz}
               restore={(d) => {
-                if (Array.isArray(d.clients)) writeClients(d.clients);
+                if (Array.isArray(d.clients)) writeClients(d.clients, { force: true });
                 if (Array.isArray(d.gigs)) writeGigs(d.gigs);
                 if (d.biz) writeBiz(d.biz);
                 if (Array.isArray(d.templates) && d.templates.length)
