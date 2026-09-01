@@ -3201,8 +3201,11 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
 
   const inMonth = wonIn(thisMonth);
 
-  const monthSpend = spend.filter((x) => (x.date || "").slice(0, 7) === thisMonth);
-  const yearSpend = spend.filter((x) => (x.date || "").slice(0, 4) === thisYear);
+  /* Browse the same month as the Goals tab (viewMonth/monthOff) — this
+     used to be locked to the real current month with no way to look
+     back at past months' spend. */
+  const monthSpend = spend.filter((x) => (x.date || "").slice(0, 7) === viewMonth);
+  const yearSpend = spend.filter((x) => (x.date || "").slice(0, 4) === yearOf);
   const spendSum = (arr) => arr.reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const marketing = (arr) =>
     spendSum(arr.filter((x) => x.kind === "Marketing / ads"));
@@ -3212,7 +3215,7 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
     v: spendSum(monthSpend.filter((x) => x.kind === k)),
   })).filter((x) => x.v > 0);
 
-  const now = snap(thisMonth);
+  const now = snap(viewMonth);
   const cashIn = now.rev;
   const monthKept = cashIn - now.artistOut - spendSum(monthSpend);
 
@@ -3501,10 +3504,19 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
 
       {view === "money" && (
         <>
+          <div className="monthbar">
+            <button className="slg-btn ghost tiny" onClick={() => setMonthOff(monthOff - 1)}>‹</button>
+            <div className="monthname">{labelMonth(viewMonth)}</div>
+            <button className="slg-btn ghost tiny" onClick={() => setMonthOff(monthOff + 1)}>›</button>
+            {monthOff !== 0 && (
+              <button className="slg-btn ghost tiny" onClick={() => setMonthOff(0)}>today</button>
+            )}
+          </div>
+
           <div className="stats">
             <div className="stat">
               <b>{money(monthKept)}</b>
-              <span>kept in {monthName()} after artists and spend</span>
+              <span>kept in {labelMonth(viewMonth)} after artists and spend</span>
             </div>
             <div className="stat">
               <b>{money(marketing(monthSpend))}</b>
@@ -3516,7 +3528,7 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
 
           <div className="ledger flat">
             <div>
-              <span>Money in this month</span>
+              <span>Money in {labelMonth(viewMonth)}</span>
               <b>{money(cashIn)}</b>
             </div>
             <div>
@@ -3584,7 +3596,7 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             </button>
           </div>
 
-          <div className="sub">{monthName()} in detail</div>
+          <div className="sub">{labelMonth(viewMonth)} in detail</div>
           {monthSpend.length === 0 && (
             <div className="slg-empty">
               <p className="quiet">Nothing logged this month.</p>
