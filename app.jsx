@@ -652,18 +652,23 @@ function SaraLuxeGlamStudio() {
       save(KEYS.clients, next);
       return;
     }
+    /* Two devices can each be holding their own slightly-stale copy of the
+       whole client list. If this device hasn't refreshed since another one
+       added/imported a new client, a plain save here would silently wipe
+       that client out. Guard against that — but only for clients this
+       device genuinely never knew about. A client that WAS in this
+       device's list a moment ago and is now gone from `next` was removed
+       on purpose (the Remove button, marking Didn't book, etc.) and must
+       not be resurrected just because the cloud still has it. */
+    const knownIds = new Set(clients.map((c) => c.id));
     (async () => {
-      /* Two devices can each be holding their own slightly-stale copy of
-         the whole client list. If this device hasn't refreshed since
-         another one added/imported a new client, a plain save here would
-         silently wipe that client out. Guard against that: check what's
-         actually in the cloud right now, and if it has any client this
-         device doesn't know about, keep it rather than lose it. */
       try {
         const latest = await load(KEYS.clients, []);
         const latestArr = Array.isArray(latest) ? latest : [];
         const nextIds = new Set(next.map((c) => c.id));
-        const missing = latestArr.filter((c) => !nextIds.has(c.id));
+        const missing = latestArr.filter(
+          (c) => !nextIds.has(c.id) && !knownIds.has(c.id)
+        );
         if (missing.length) {
           const merged = [...next, ...missing];
           setClients(merged);
