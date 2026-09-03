@@ -3428,6 +3428,7 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
           ["content", "Content"],
           ["shoots", "Shoots"],
           ["vendors", "Vendors"],
+          ["checklists", "Checklists"],
           ["routine", "Routine"],
         ].map(([k, l]) => (
           <button
@@ -3937,61 +3938,8 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
         </>
       )}
 
-      {view === "routine" && (
+      {view === "checklists" && (
         <>
-          <WeekShape />
-
-          {shoots.some((sh) => !sh.done && (sh.todos || []).some((t) => !t.done)) && (
-            <>
-              <div className="sub">From your shoots</div>
-              {shoots
-                .filter((sh) => !sh.done)
-                .flatMap((sh) =>
-                  (sh.todos || [])
-                    .filter((t) => !t.done)
-                    .map((t) => (
-                      <div key={sh.id + t.id} className="todo">
-                        <button
-                          className="todo-tick"
-                          onClick={() =>
-                            patchShoot(sh.id, {
-                              todos: sh.todos.map((x) =>
-                                x.id === t.id ? { ...x, done: true } : x
-                              ),
-                            })
-                          }
-                        />
-                        <span className="todo-text">
-                          <b>{sh.title}</b> — {t.text}
-                        </span>
-                      </div>
-                    ))
-                )}
-            </>
-          )}
-
-          <TaskList
-            title="My to-do list"
-            note="Anything one-off. Nothing here clears itself — it stays until you tick it."
-            placeholder="Something you want to get done…"
-            items={todos}
-            isDone={tIsDone}
-            toggle={tToggle}
-            remove={tRemove}
-            addSub={tAddSub}
-            removeSub={tRemoveSub}
-            rename={tRename}
-            renameSub={tRenameSub}
-            onAdd={tAdd}
-            extra={
-              todos.some((t) => tIsDone(t.id)) ? (
-                <button className="linkbtn" onClick={tClearDone}>
-                  Clear done
-                </button>
-              ) : null
-            }
-          />
-
           <TaskList
             title="Before an appointment"
             note="Run through this before you leave. Tap Reset once you're back, ready for next time."
@@ -4053,6 +4001,63 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
               rAnyChecked("nonBridalKit") ? (
                 <button className="linkbtn" onClick={() => rResetList("nonBridalKit")}>
                   Reset
+                </button>
+              ) : null
+            }
+          />
+        </>
+      )}
+
+      {view === "routine" && (
+        <>
+          <WeekShape />
+
+          {shoots.some((sh) => !sh.done && (sh.todos || []).some((t) => !t.done)) && (
+            <>
+              <div className="sub">From your shoots</div>
+              {shoots
+                .filter((sh) => !sh.done)
+                .flatMap((sh) =>
+                  (sh.todos || [])
+                    .filter((t) => !t.done)
+                    .map((t) => (
+                      <div key={sh.id + t.id} className="todo">
+                        <button
+                          className="todo-tick"
+                          onClick={() =>
+                            patchShoot(sh.id, {
+                              todos: sh.todos.map((x) =>
+                                x.id === t.id ? { ...x, done: true } : x
+                              ),
+                            })
+                          }
+                        />
+                        <span className="todo-text">
+                          <b>{sh.title}</b> — {t.text}
+                        </span>
+                      </div>
+                    ))
+                )}
+            </>
+          )}
+
+          <TaskList
+            title="My to-do list"
+            note="Anything one-off. Nothing here clears itself — it stays until you tick it."
+            placeholder="Something you want to get done…"
+            items={todos}
+            isDone={tIsDone}
+            toggle={tToggle}
+            remove={tRemove}
+            addSub={tAddSub}
+            removeSub={tRemoveSub}
+            rename={tRename}
+            renameSub={tRenameSub}
+            onAdd={tAdd}
+            extra={
+              todos.some((t) => tIsDone(t.id)) ? (
+                <button className="linkbtn" onClick={tClearDone}>
+                  Clear done
                 </button>
               ) : null
             }
