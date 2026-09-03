@@ -2919,33 +2919,42 @@ function TaskItem({ item, isDone, toggle, remove, addSub, removeSub, rename, ren
 
 function TaskList({
   items, isDone, toggle, remove, addSub, removeSub, onAdd, rename, renameSub,
-  title, note, placeholder, extra,
+  title, note, placeholder, extra, startOpen,
 }) {
+  const [open, setOpen] = useState(!!startOpen);
   const left = items.filter((t) => !isDone(t.id)).length;
   return (
     <>
       <div className="sub subrow">
-        <span>
-          {title}
+        <button
+          className="linkbtn"
+          style={{ fontWeight: 600, textAlign: "left" }}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? "▾" : "▸"} {title}
           {items.length === 0 ? "" : left ? ` · ${left} left` : " · all done"}
-        </span>
+        </button>
         {extra}
       </div>
-      {note && <div className="hint">{note}</div>}
-      {items.map((t) => (
-        <TaskItem
-          key={t.id}
-          item={t}
-          isDone={isDone}
-          toggle={toggle}
-          remove={remove}
-          addSub={addSub}
-          removeSub={removeSub}
-          rename={rename}
-          renameSub={renameSub}
-        />
-      ))}
-      <AddLine onAdd={onAdd} placeholder={placeholder} />
+      {open && (
+        <>
+          {note && <div className="hint">{note}</div>}
+          {items.map((t) => (
+            <TaskItem
+              key={t.id}
+              item={t}
+              isDone={isDone}
+              toggle={toggle}
+              remove={remove}
+              addSub={addSub}
+              removeSub={removeSub}
+              rename={rename}
+              renameSub={renameSub}
+            />
+          ))}
+          <AddLine onAdd={onAdd} placeholder={placeholder} />
+        </>
+      )}
     </>
   );
 }
