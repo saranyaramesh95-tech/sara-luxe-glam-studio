@@ -492,6 +492,9 @@ const DEFAULT_BIZ = {
       { id: "m4", text: "Ask last month's brides for a review" },
       { id: "m5", text: "Download a backup" },
     ],
+    beforeAppointment: [],
+    bridalKit: [],
+    nonBridalKit: [],
     done: {},
     wk: "",
     mo: "",
@@ -3344,6 +3347,23 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
           : t
       )
     );
+  /* For reusable checklists (before an appointment, kit contents) — unlike
+     weekly/monthly, these don't reset on a calendar schedule. This clears
+     every check in one list on demand, so the same items are ready to
+     tick again next time instead of piling up or getting deleted. */
+  const rResetList = (list) => {
+    const items = routine[list] || [];
+    const done = { ...rDone };
+    items.forEach((t) => {
+      delete done[t.id];
+      (t.subs || []).forEach((s) => delete done[s.id]);
+    });
+    writeBiz({ ...biz, routine: { ...routine, done } });
+  };
+  const rAnyChecked = (list) =>
+    (routine[list] || []).some(
+      (t) => rIsDone(t.id) || (t.subs || []).some((s) => rIsDone(s.id))
+    );
 
   /* the standing list — never resets */
   const todos = biz.todos || [];
@@ -3967,6 +3987,72 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
               todos.some((t) => tIsDone(t.id)) ? (
                 <button className="linkbtn" onClick={tClearDone}>
                   Clear done
+                </button>
+              ) : null
+            }
+          />
+
+          <TaskList
+            title="Before an appointment"
+            note="Run through this before you leave. Tap Reset once you're back, ready for next time."
+            placeholder="Something to check before you go…"
+            items={routine.beforeAppointment || []}
+            isDone={rIsDone}
+            toggle={rToggle}
+            remove={(id) => rRemove("beforeAppointment", id)}
+            addSub={(pid, t) => rAddSub("beforeAppointment", pid, t)}
+            removeSub={(pid, sid) => rRemoveSub("beforeAppointment", pid, sid)}
+            rename={(id, t) => rRename("beforeAppointment", id, t)}
+            renameSub={(pid, sid, t) => rRenameSub("beforeAppointment", pid, sid, t)}
+            onAdd={(t) => rAdd("beforeAppointment", t)}
+            extra={
+              rAnyChecked("beforeAppointment") ? (
+                <button className="linkbtn" onClick={() => rResetList("beforeAppointment")}>
+                  Reset
+                </button>
+              ) : null
+            }
+          />
+
+          <TaskList
+            title="Bridal touch-up kit"
+            note="What belongs in your kit for a bridal booking. Tap Reset once you're back, ready for next time."
+            placeholder="Something that belongs in the bridal kit…"
+            items={routine.bridalKit || []}
+            isDone={rIsDone}
+            toggle={rToggle}
+            remove={(id) => rRemove("bridalKit", id)}
+            addSub={(pid, t) => rAddSub("bridalKit", pid, t)}
+            removeSub={(pid, sid) => rRemoveSub("bridalKit", pid, sid)}
+            rename={(id, t) => rRename("bridalKit", id, t)}
+            renameSub={(pid, sid, t) => rRenameSub("bridalKit", pid, sid, t)}
+            onAdd={(t) => rAdd("bridalKit", t)}
+            extra={
+              rAnyChecked("bridalKit") ? (
+                <button className="linkbtn" onClick={() => rResetList("bridalKit")}>
+                  Reset
+                </button>
+              ) : null
+            }
+          />
+
+          <TaskList
+            title="Non-bridal touch-up kit"
+            note="What belongs in your kit for a non-bridal booking. Tap Reset once you're back, ready for next time."
+            placeholder="Something that belongs in the non-bridal kit…"
+            items={routine.nonBridalKit || []}
+            isDone={rIsDone}
+            toggle={rToggle}
+            remove={(id) => rRemove("nonBridalKit", id)}
+            addSub={(pid, t) => rAddSub("nonBridalKit", pid, t)}
+            removeSub={(pid, sid) => rRemoveSub("nonBridalKit", pid, sid)}
+            rename={(id, t) => rRename("nonBridalKit", id, t)}
+            renameSub={(pid, sid, t) => rRenameSub("nonBridalKit", pid, sid, t)}
+            onAdd={(t) => rAdd("nonBridalKit", t)}
+            extra={
+              rAnyChecked("nonBridalKit") ? (
+                <button className="linkbtn" onClick={() => rResetList("nonBridalKit")}>
+                  Reset
                 </button>
               ) : null
             }
