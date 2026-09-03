@@ -1890,7 +1890,6 @@ function Pipeline({
                       Retainer{t.retainerLocked ? " (locked)" : ` ${settings.retainerPct}%`}
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <b>{money(t.retainer)}</b>
                       {c.stage >= 3 && (
                         <button
                           className="linkbtn"
@@ -1908,6 +1907,7 @@ function Pipeline({
                           {t.retainerLocked ? "Unlock" : "Lock"}
                         </button>
                       )}
+                      <b>{money(t.retainer)}</b>
                     </span>
                   </div>
                   <div>
