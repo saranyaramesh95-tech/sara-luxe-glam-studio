@@ -1868,20 +1868,26 @@ function Pipeline({
                     <span>
                       Retainer{t.retainerLocked ? " (locked)" : ` ${settings.retainerPct}%`}
                     </span>
-                    {t.retainerLocked ? (
-                      <div className="price-in">
-                        <span>$</span>
-                        <input
-                          type="number"
-                          value={c.retainerLocked}
-                          onChange={(e) =>
-                            patch(c.id, { retainerLocked: e.target.value })
-                          }
-                        />
-                      </div>
-                    ) : (
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <b>{money(t.retainer)}</b>
-                    )}
+                      {c.stage >= 3 && (
+                        <button
+                          className="linkbtn"
+                          style={{ fontSize: 11 }}
+                          onClick={() =>
+                            patch(c.id, {
+                              // Unlock: drop back to the live % calculation.
+                              // Lock: freeze it at whatever that live number
+                              // is right now. Either way, she never types a
+                              // total or a retainer by hand.
+                              retainerLocked: t.retainerLocked ? null : t.retainer,
+                            })
+                          }
+                        >
+                          {t.retainerLocked ? "Unlock" : "Lock"}
+                        </button>
+                      )}
+                    </span>
                   </div>
                   <div>
                     <span>Balance{t.balanceDue ? ` by ${fmtDate(t.balanceDue)}` : ""}</span>
@@ -1890,9 +1896,9 @@ function Pipeline({
                 </div>
                 {t.retainerLocked && (
                   <div className="hint" style={{ marginTop: -6, marginBottom: 8 }}>
-                    Retainer locked in at booking — adding services now only
-                    changes the balance. Edit the number above if it needs
-                    correcting.
+                    Retainer locked in — adding services now only changes the
+                    balance. Tap Unlock if you need it to recalculate off the
+                    new total.
                   </div>
                 )}
 
