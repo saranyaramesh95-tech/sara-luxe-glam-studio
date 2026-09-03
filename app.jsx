@@ -295,6 +295,16 @@ const daysUntil = (s) => {
 const money = (n) =>
   "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
 
+/* Turns whatever she typed in "Getting ready at" into something clickable —
+   a pasted Google Maps link opens as-is, a plain address/hotel name gets
+   wrapped into a Maps search so it still opens straight to the right pin. */
+const mapsLink = (loc) => {
+  const s = (loc || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s)}`;
+};
+
 /* "today" / "yesterday" / "N days ago" for a full timestamp (not just a
    date string) — used for "last checked" on the reusable checklists. */
 const relTime = (ts) => {
@@ -1747,9 +1757,20 @@ function Pipeline({
                   <Field label="Getting ready at">
                     <input
                       value={c.location || ""}
-                      placeholder="Hotel, address…"
+                      placeholder="Hotel, address, or paste a Google Maps link…"
                       onChange={(e) => patch(c.id, { location: e.target.value })}
                     />
+                    {c.location && (
+                      <a
+                        href={mapsLink(c.location)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="linkbtn"
+                        style={{ fontSize: 12, marginTop: 4, display: "inline-block" }}
+                      >
+                        📍 Open in Google Maps
+                      </a>
+                    )}
                   </Field>
                 </div>
 
