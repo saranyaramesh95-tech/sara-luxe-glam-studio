@@ -320,6 +320,12 @@ const relTime = (ts) => {
   return `${days} days ago`;
 };
 
+/* how many days this booking runs — the event date plus any extra day(s)
+   she's added (consecutive or with a gap, e.g. mehendi + wedding). Only
+   counts extra dates that actually got picked. */
+const dayCountOf = (c) =>
+  1 + (Array.isArray(c.extraDates) ? c.extraDates.filter(Boolean).length : 0);
+
 /* what this client actually agreed to pay for a service —
    her own figure if one was set, otherwise the current rate */
 const priceFor = (c, s) => {
@@ -626,7 +632,7 @@ function SaraLuxeGlamStudio() {
           const s = rSvc.find((x) => x.id === id);
           if (s) sum += priceFor(cl, s) * (Number(qty) || 0);
         });
-        if (cl.travel) sum += Number(rSet.travelFee) || 0;
+        if (cl.travel) sum += (Number(rSet.travelFee) || 0) * dayCountOf(cl);
         if (cl.secondArtistTravel) sum += Number(rSet.secondArtistTravel) || 0;
         return sum;
       };
@@ -761,7 +767,7 @@ function SaraLuxeGlamStudio() {
         const s = rates.find((r) => r.id === id);
         if (s) sum += priceFor(c, s) * (Number(qty) || 0);
       });
-      if (c.travel) sum += Number(settings.travelFee) || 0;
+      if (c.travel) sum += (Number(settings.travelFee) || 0) * dayCountOf(c);
       if (c.secondArtistTravel) sum += Number(settings.secondArtistTravel) || 0;
     }
     // Once a retainer is locked in (paid), it stops moving even if services
@@ -835,6 +841,7 @@ function SaraLuxeGlamStudio() {
       nudgeOn: isoOf(new Date(Date.now() + 3 * 86400000)),
       readyTime: "",
       location: "",
+      extraDates: [],
       ...draft,
     };
     writeClients([...clients, c]);
@@ -1681,6 +1688,9 @@ function Pipeline({
                   {dLeft > 0 ? `${dLeft} days out` : dLeft === 0 ? "today" : "past"}
                 </span>
               )}
+              {dayCountOf(c) > 1 && (
+                <span className="chip gold">{dayCountOf(c)} days</span>
+              )}
               {t.total > 0 && <span className="chip">{money(t.total)}</span>}
               {(c.todos || []).some((x) => !x.done) && (
                 <span className="chip todo-chip">
@@ -1711,6 +1721,44 @@ function Pipeline({
                       onChange={(e) => patch(c.id, { eventDate: e.target.value })}
                     />
                   </Field>
+                  {/* Extra day(s) of the same booking — a second (or third…)
+                      date, consecutive or with a gap, e.g. mehendi + wedding.
+                      Each doubles/triples the travel fee automatically. */}
+                  {(c.extraDates || []).map((d, i) => (
+                    <div className="field wide" key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <span style={{ minWidth: 46 }}>{`Day ${i + 2}`}</span>
+                      <input
+                        type="date"
+                        value={d}
+                        style={{ flex: 1 }}
+                        onChange={(e) => {
+                          const next = [...c.extraDates];
+                          next[i] = e.target.value;
+                          patch(c.id, { extraDates: next });
+                        }}
+                      />
+                      <button
+                        className="linkbtn"
+                        onClick={() =>
+                          patch(c.id, {
+                            extraDates: c.extraDates.filter((_, idx) => idx !== i),
+                          })
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <div className="field wide">
+                    <button
+                      className="linkbtn"
+                      onClick={() =>
+                        patch(c.id, { extraDates: [...(c.extraDates || []), ""] })
+                      }
+                    >
+                      + Add another day{(c.extraDates || []).length ? "" : " (multi-day booking)"}
+                    </button>
+                  </div>
                   <Field label="Enquiry came in">
                     <input
                       type="date"
@@ -1838,7 +1886,11 @@ function Pipeline({
                   <Toggle
                     on={c.travel}
                     onClick={() => patch(c.id, { travel: !c.travel })}
-                    label={`Beyond ${settings.travelRadius} mi (${money(settings.travelFee)})`}
+                    label={
+                      dayCountOf(c) > 1
+                        ? `Beyond ${settings.travelRadius} mi (${money(settings.travelFee)} × ${dayCountOf(c)} days = ${money(settings.travelFee * dayCountOf(c))})`
+                        : `Beyond ${settings.travelRadius} mi (${money(settings.travelFee)})`
+                    }
                   />
                   <Toggle
                     on={c.secondArtistTravel}
@@ -4626,6 +4678,7 @@ const CSS = `
   color:var(--mute); background:var(--ground); padding:3px 8px; border-radius:2px;
 }
 .chip.alert{background:#FCE7EF; color:var(--kum)}
+.chip.gold{background:#FBF3E2; color:var(--gold)}
 
 .card-open{border-top:1px solid var(--line); margin-top:14px; padding-top:14px; cursor:default}
 .sub{
