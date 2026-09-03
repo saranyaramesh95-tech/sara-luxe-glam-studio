@@ -2148,20 +2148,36 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
     year: "numeric",
   });
 
+  // A multi-day booking gets a row on each of its own days that falls in
+  // this month — so a second (or third…) day actually shows up on its own
+  // date, not just hidden under the first day. Only the first day counts
+  // toward the confirmed/pending totals and revenue below, so a 2-day
+  // booking still counts as one booking, not two.
   const mine = clients
-    .filter(
-      (c) => c.eventDate && c.eventDate.slice(0, 7) === key && c.archived !== "lost"
-    )
-    .map((c) => ({
-      id: c.id,
-      date: c.eventDate,
-      name: c.name,
-      sub: [c.occasion || c.type, c.city].filter(Boolean).join(" · "),
-      confirmed: c.stage >= 3,
-      stage: STAGES[c.stage],
-      money: totals(c).total,
-      own: true,
-    }));
+    .filter((c) => c.archived !== "lost")
+    .flatMap((c) => {
+      const dates = [c.eventDate, ...(c.extraDates || [])].filter(Boolean);
+      return dates
+        .map((d, i) => ({ d, i }))
+        .filter(({ d }) => d.slice(0, 7) === key)
+        .map(({ d, i }) => ({
+          id: c.id + "-" + i,
+          date: d,
+          name: c.name,
+          sub: [
+            c.occasion || c.type,
+            c.city,
+            dates.length > 1 ? `day ${i + 1} of ${dates.length}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          confirmed: c.stage >= 3,
+          stage: STAGES[c.stage],
+          money: totals(c).total,
+          own: true,
+          primary: i === 0,
+        }));
+    });
 
   const theirs = gigs
     .filter((x) => x.date && x.date.slice(0, 7) === key)
@@ -2178,10 +2194,15 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
     a.date < b.date ? -1 : a.date > b.date ? 1 : 0
   );
 
-  const confirmed = all.filter((x) => x.confirmed).length;
-  const pending = all.length - confirmed;
+  // theirs/gigs rows have no `primary` flag at all — treat those as always
+  // countable, same as before. Only a multi-day own-booking's extra-day
+  // rows carry primary:false, so they show on the calendar without being
+  // counted a second time.
+  const countable = all.filter((x) => x.primary !== false);
+  const confirmed = countable.filter((x) => x.confirmed).length;
+  const pending = countable.length - confirmed;
   const ownRevenue = mine
-    .filter((x) => x.confirmed)
+    .filter((x) => x.confirmed && x.primary)
     .reduce((s, x) => s + x.money, 0);
 
   const addGig = () => {
