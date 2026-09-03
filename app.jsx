@@ -295,6 +295,21 @@ const daysUntil = (s) => {
 const money = (n) =>
   "$" + Math.round(Number(n) || 0).toLocaleString("en-US");
 
+/* "today" / "yesterday" / "N days ago" for a full timestamp (not just a
+   date string) — used for "last checked" on the reusable checklists. */
+const relTime = (ts) => {
+  if (!ts) return "";
+  const then = new Date(ts);
+  if (isNaN(then)) return "";
+  const startOfThen = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+  const startOfNow = new Date();
+  startOfNow.setHours(0, 0, 0, 0);
+  const days = Math.round((startOfNow - startOfThen) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
+};
+
 /* what this client actually agreed to pay for a service —
    her own figure if one was set, otherwise the current rate */
 const priceFor = (c, s) => {
@@ -498,6 +513,7 @@ const DEFAULT_BIZ = {
     done: {},
     wk: "",
     mo: "",
+    lastChecked: {},
   },
   routineNotes: "",
 };
@@ -586,10 +602,39 @@ function SaraLuxeGlamStudio() {
         backfilled = true;
         return { ...cl, preWeddingTodos: seedPreWeddingTodos() };
       });
-      setClients(withPreWedding);
-      if (backfilled) save(KEYS.clients, withPreWedding);
-      setRates(r.services || DEFAULT_RATES);
-      setSettings({ ...DEFAULT_SETTINGS, ...(r.settings || {}) });
+      /* one-time backfill: lock in today's retainer $ for any client already
+         at "Retainer paid" or beyond from before that feature existed, so it
+         stops moving once she adds services later. Uses the freshly-loaded
+         rates/settings, not component state, since those haven't applied yet. */
+      const rSvc = r.services || DEFAULT_RATES;
+      const rSet = { ...DEFAULT_SETTINGS, ...(r.settings || {}) };
+      const sumFor = (cl) => {
+        const agreed = Number(cl.agreedTotal) || 0;
+        if (agreed > 0) return agreed;
+        let sum = 0;
+        Object.entries(cl.services || {}).forEach(([id, qty]) => {
+          const s = rSvc.find((x) => x.id === id);
+          if (s) sum += priceFor(cl, s) * (Number(qty) || 0);
+        });
+        if (cl.travel) sum += Number(rSet.travelFee) || 0;
+        if (cl.secondArtistTravel) sum += Number(rSet.secondArtistTravel) || 0;
+        return sum;
+      };
+      const withRetainerLock = withPreWedding.map((cl) => {
+        if (
+          cl.stage >= 3 &&
+          (cl.retainerLocked === undefined || cl.retainerLocked === null || cl.retainerLocked === "")
+        ) {
+          backfilled = true;
+          const pct = Math.round((sumFor(cl) * (Number(rSet.retainerPct) || 0)) / 100);
+          return { ...cl, retainerLocked: pct };
+        }
+        return cl;
+      });
+      setClients(withRetainerLock);
+      if (backfilled) save(KEYS.clients, withRetainerLock);
+      setRates(rSvc);
+      setSettings(rSet);
       /* keep any wording she's edited, add templates she doesn't have yet */
       const saved = Array.isArray(t) && t.length ? t : [];
       const mergedTemplates = saved.length
@@ -709,11 +754,18 @@ function SaraLuxeGlamStudio() {
       if (c.travel) sum += Number(settings.travelFee) || 0;
       if (c.secondArtistTravel) sum += Number(settings.secondArtistTravel) || 0;
     }
-    const retainer = Math.round((sum * (Number(settings.retainerPct) || 0)) / 100);
+    // Once a retainer is locked in (paid), it stops moving even if services
+    // get added/changed later — she wants to see exactly what's still owed
+    // against the final total, not have the retainer creep with it.
+    const locked = c.retainerLocked !== undefined && c.retainerLocked !== null && c.retainerLocked !== "";
+    const retainer = locked
+      ? Number(c.retainerLocked) || 0
+      : Math.round((sum * (Number(settings.retainerPct) || 0)) / 100);
     return {
       total: sum,
       agreed: agreed > 0,
       retainer,
+      retainerLocked: locked,
       balance: sum - retainer,
       balanceDue: c.eventDate
         ? shiftDays(c.eventDate, -(Number(settings.balanceLeadDays) || 0))
@@ -792,6 +844,17 @@ function SaraLuxeGlamStudio() {
         )
           next.retainerMonth = monthKey();
         if (p.stage !== undefined && p.stage < 3) next.retainerMonth = null;
+        // Lock the retainer dollar amount the moment she hits "Retainer
+        // paid", so adding services afterward changes the balance owed,
+        // not the retainer itself. Moving back out of that stage (e.g. a
+        // mistaken click) unlocks it again.
+        if (
+          p.stage !== undefined &&
+          p.stage >= 3 &&
+          (next.retainerLocked === undefined || next.retainerLocked === null || next.retainerLocked === "")
+        )
+          next.retainerLocked = totals(next).retainer;
+        if (p.stage !== undefined && p.stage < 3) next.retainerLocked = null;
         if (p.stage !== undefined && p.stage >= 4 && !next.balanceMonth)
           next.balanceMonth = monthKey();
         if (p.stage !== undefined && p.stage < 4) next.balanceMonth = null;
@@ -1802,14 +1865,36 @@ function Pipeline({
                     <b>{money(t.total)}</b>
                   </div>
                   <div>
-                    <span>Retainer {settings.retainerPct}%</span>
-                    <b>{money(t.retainer)}</b>
+                    <span>
+                      Retainer{t.retainerLocked ? " (locked)" : ` ${settings.retainerPct}%`}
+                    </span>
+                    {t.retainerLocked ? (
+                      <div className="price-in">
+                        <span>$</span>
+                        <input
+                          type="number"
+                          value={c.retainerLocked}
+                          onChange={(e) =>
+                            patch(c.id, { retainerLocked: e.target.value })
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <b>{money(t.retainer)}</b>
+                    )}
                   </div>
                   <div>
                     <span>Balance{t.balanceDue ? ` by ${fmtDate(t.balanceDue)}` : ""}</span>
                     <b>{money(t.balance)}</b>
                   </div>
                 </div>
+                {t.retainerLocked && (
+                  <div className="hint" style={{ marginTop: -6, marginBottom: 8 }}>
+                    Retainer locked in at booking — adding services now only
+                    changes the balance. Edit the number above if it needs
+                    correcting.
+                  </div>
+                )}
 
                 <SecondArtists c={c} patch={patch} clientTotal={t.total} />
 
@@ -2919,7 +3004,7 @@ function TaskItem({ item, isDone, toggle, remove, addSub, removeSub, rename, ren
 
 function TaskList({
   items, isDone, toggle, remove, addSub, removeSub, onAdd, rename, renameSub,
-  title, note, placeholder, extra, startOpen,
+  title, note, placeholder, extra, startOpen, subtitle,
 }) {
   const [open, setOpen] = useState(!!startOpen);
   const left = items.filter((t) => !isDone(t.id)).length;
@@ -2933,6 +3018,7 @@ function TaskList({
         >
           {open ? "▾" : "▸"} {title}
           {items.length === 0 ? "" : left ? ` · ${left} left` : " · all done"}
+          {subtitle ? ` · ${subtitle}` : ""}
         </button>
         {extra}
       </div>
@@ -3367,7 +3453,8 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
       delete done[t.id];
       (t.subs || []).forEach((s) => delete done[s.id]);
     });
-    writeBiz({ ...biz, routine: { ...routine, done } });
+    const lastChecked = { ...(routine.lastChecked || {}), [list]: Date.now() };
+    writeBiz({ ...biz, routine: { ...routine, done, lastChecked } });
   };
   const rAnyChecked = (list) =>
     (routine[list] || []).some(
@@ -3953,6 +4040,11 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             title="Before an appointment"
             note="Run through this before you leave. Tap Reset once you're back, ready for next time."
             placeholder="Something to check before you go…"
+            subtitle={
+              (routine.lastChecked || {}).beforeAppointment
+                ? `last checked ${relTime(routine.lastChecked.beforeAppointment)}`
+                : "never checked yet"
+            }
             items={routine.beforeAppointment || []}
             isDone={rIsDone}
             toggle={rToggle}
@@ -3975,6 +4067,11 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             title="Bridal touch-up kit"
             note="What belongs in your kit for a bridal booking. Tap Reset once you're back, ready for next time."
             placeholder="Something that belongs in the bridal kit…"
+            subtitle={
+              (routine.lastChecked || {}).bridalKit
+                ? `last checked ${relTime(routine.lastChecked.bridalKit)}`
+                : "never checked yet"
+            }
             items={routine.bridalKit || []}
             isDone={rIsDone}
             toggle={rToggle}
@@ -3997,6 +4094,11 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             title="Non-bridal touch-up kit"
             note="What belongs in your kit for a non-bridal booking. Tap Reset once you're back, ready for next time."
             placeholder="Something that belongs in the non-bridal kit…"
+            subtitle={
+              (routine.lastChecked || {}).nonBridalKit
+                ? `last checked ${relTime(routine.lastChecked.nonBridalKit)}`
+                : "never checked yet"
+            }
             items={routine.nonBridalKit || []}
             isDone={rIsDone}
             toggle={rToggle}
