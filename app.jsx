@@ -3428,6 +3428,14 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
     setSp({ ...sp, label: "", amount: "" });
   };
 
+  // Fixes a mistyped date, kind, label or amount on something already
+  // logged, without having to remove it and re-enter it from scratch.
+  const patchSpend = (id, p) =>
+    writeBiz({
+      ...biz,
+      spend: spend.map((y) => (y.id === id ? { ...y, ...p } : y)),
+    });
+
   /* vendors */
   const vendors = biz.vendors || [];
   const writeVendors = (next) => writeBiz({ ...biz, vendors: next });
@@ -3829,13 +3837,39 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             .map((x) => (
               <div key={x.id} className="row">
                 <div className="row-main">
-                  <b>{x.label || x.kind}</b>
-                  <div className="quiet">
-                    {x.kind} · {fmtDate(x.date)}
+                  <b>
+                    <EditText
+                      value={x.label || x.kind}
+                      onSave={(v) => patchSpend(x.id, { label: v })}
+                    />
+                  </b>
+                  <div className="quiet spend-edit-row">
+                    <select
+                      className="spend-inline"
+                      value={x.kind}
+                      onChange={(e) => patchSpend(x.id, { kind: e.target.value })}
+                    >
+                      {SPEND_KINDS.map((k) => (
+                        <option key={k}>{k}</option>
+                      ))}
+                    </select>
+                    ·
+                    <input
+                      className="spend-inline"
+                      type="date"
+                      value={x.date}
+                      onChange={(e) => patchSpend(x.id, { date: e.target.value })}
+                    />
                   </div>
                 </div>
                 <div className="row-right">
-                  <b>{money(x.amount)}</b>
+                  <b>
+                    $
+                    <EditText
+                      value={String(x.amount ?? "")}
+                      onSave={(v) => patchSpend(x.id, { amount: Number(v) || 0 })}
+                    />
+                  </b>
                 </div>
                 <button
                   className="paybtn"
@@ -4921,6 +4955,15 @@ const CSS = `
 .inlineedit{
   font-family:'DM Sans',sans-serif; font-size:13.5px; padding:3px 6px !important;
   border-color:var(--gold) !important;
+}
+.spend-edit-row{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.slg-root select.spend-inline, .slg-root input.spend-inline{
+  width:auto; display:inline-block; padding:2px 5px !important; font-size:12px;
+  border-color:transparent; background:transparent;
+}
+.slg-root select.spend-inline:hover, .slg-root input.spend-inline:hover,
+.slg-root select.spend-inline:focus, .slg-root input.spend-inline:focus{
+  border-color:var(--line);
 }
 .task{margin-bottom:2px}
 .shoot{
