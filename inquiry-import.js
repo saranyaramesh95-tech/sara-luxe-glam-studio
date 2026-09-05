@@ -36,6 +36,19 @@
     }));
   }
 
+  // Matches the "How did you hear about us?" options in inquiry.html to the
+  // same lead-source labels the app's own dropdown uses (LEAD_SOURCES in
+  // app.jsx), so a website lead and a manually-added one land in the same
+  // bucket for reporting.
+  const SOURCE_MAP = {
+    Google: "Google",
+    Instagram: "Instagram",
+    Facebook: "Facebook",
+    Friend: "Referral / friend",
+    Weddingwire: "WeddingWire",
+    "The Knot": "The Knot",
+  };
+
   function inquiryToClient(row) {
     const a = row.answers || {};
     const mapped = EVENT_TYPE_MAP[a.eventType] || { type: "Special event", occasion: a.eventType || "" };
@@ -74,6 +87,7 @@
       nudgeOn: isoOf(new Date(today.getTime() + 3 * 86400000)),
       readyTime: "",
       location: a.location || "",
+      leadSource: SOURCE_MAP[a.source] || (a.source ? "Other" : ""),
     };
   }
 

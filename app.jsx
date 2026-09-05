@@ -499,6 +499,19 @@ const LOST_REASONS = [
   "Other",
 ];
 
+const LEAD_SOURCES = [
+  "Instagram",
+  "Website",
+  "WhatsApp DM",
+  "Thumbtack",
+  "Google",
+  "Facebook",
+  "Referral / friend",
+  "WeddingWire",
+  "The Knot",
+  "Other",
+];
+
 const DEFAULT_BIZ = {
   goals: { yearRevenue: 0, yearBookings: 0, monthRevenue: 0, monthBookings: 0 },
   myGoals: [],
@@ -842,6 +855,7 @@ function SaraLuxeGlamStudio() {
       readyTime: "",
       location: "",
       extraDates: [],
+      leadSource: "",
       ...draft,
     };
     writeClients([...clients, c]);
@@ -1108,6 +1122,17 @@ function Details({ c, patch }) {
               onChange={(e) => patch(c.id, { email: e.target.value })}
             />
           </Field>
+          <Field label="Where she found you">
+            <select
+              value={c.leadSource || ""}
+              onChange={(e) => patch(c.id, { leadSource: e.target.value })}
+            >
+              <option value="">—</option>
+              {LEAD_SOURCES.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </Field>
         </div>
       ) : (
         <div className="ledger flat">
@@ -1121,6 +1146,7 @@ function Details({ c, patch }) {
               <div><span>Email</span><b>{c.email || "—"}</b></div>
             </>
           )}
+          <div><span>Found you via</span><b>{c.leadSource || "—"}</b></div>
         </div>
       )}
     </>
@@ -3353,6 +3379,15 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
   const M = snap(viewMonth);
   const P = snap(shiftMonth(viewMonth, -1));
 
+  /* how this month's enquiries actually found her — Instagram, website,
+     WhatsApp DM, Thumbtack, etc. Same list she can pick per client in
+     "Her details". */
+  const bySource = LEAD_SOURCES.map((s) => ({
+    s,
+    n: askedIn(viewMonth).filter((c) => c.leadSource === s).length,
+  })).filter((x) => x.n > 0);
+  const untagged = askedIn(viewMonth).filter((c) => !c.leadSource).length;
+
   const yearOf = viewMonth.slice(0, 4);
   const yearMonths = Array.from({ length: 12 }, (_, i) =>
     `${yearOf}-${String(i + 1).padStart(2, "0")}`
@@ -3691,6 +3726,32 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             reached you this month. Events attended includes work you did for
             other artists; weddings counts only your own brides.
           </div>
+
+          {(bySource.length > 0 || untagged > 0) && (
+            <>
+              <div className="sub">Where {labelMonth(viewMonth)}'s enquiries came from</div>
+              <div className="ledger flat">
+                {bySource.map((x) => (
+                  <div key={x.s}>
+                    <span>{x.s}</span>
+                    <b>{x.n}</b>
+                  </div>
+                ))}
+                {untagged > 0 && (
+                  <div>
+                    <span>Not tagged yet</span>
+                    <b>{untagged}</b>
+                  </div>
+                )}
+              </div>
+              {untagged > 0 && (
+                <div className="hint">
+                  Set "Where she found you" on a client's card (under Her
+                  details) to tag it.
+                </div>
+              )}
+            </>
+          )}
 
           <div className="sub">My goals for {labelMonth(viewMonth)}</div>
           <MyGoals
