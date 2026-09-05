@@ -2106,6 +2106,7 @@ function AddForm({ onAdd }) {
     occasion: "wedding",
     eventDate: "",
     city: "Austin",
+    leadSource: "",
   });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
@@ -2144,6 +2145,17 @@ function AddForm({ onAdd }) {
             <option>Austin</option>
             <option>San Antonio</option>
             <option>Other</option>
+          </select>
+        </Field>
+        <Field label="Where she found you">
+          <select
+            value={f.leadSource}
+            onChange={(e) => set("leadSource", e.target.value)}
+          >
+            <option value="">—</option>
+            {LEAD_SOURCES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
           </select>
         </Field>
       </div>
