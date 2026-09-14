@@ -822,15 +822,15 @@ function SaraLuxeGlamStudio() {
   const trialOpen = Math.max(0, 2 - trialTaken);
 
   /* ---- sorting ----
-     Newest added first, full stop — except a follow-up that's genuinely
-     overdue (3+ days past its date, same threshold as the alert tag)
-     still jumps to the very top. A follow-up due today or 1-2 days past
-     no longer overrides recency. Event date proximity doesn't factor in. */
+     Newest added first, full stop. An overdue follow-up (3+ days past its
+     date) used to jump the card to the very top, but once a handful of
+     clients go stale that pile buries every new inquiry underneath it —
+     the opposite of what "newest first" is for. Overdue clients still get
+     flagged (red left edge + "follow up now" chip, in the card rendering
+     below) so they're not lost, they just don't reorder the whole list
+     anymore. Event date proximity doesn't factor in either. */
   const sorted = useMemo(() => {
     const score = (c) => {
-      const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : 9999;
-      const overdue = c.stage < 3 && nudge !== null && nudge <= FOLLOWUP_GRACE_DAYS;
-      if (overdue) return -100000;
       const d = inquiryOf(c);
       const t = d ? parseDate(d).getTime() : 0;
       return -t / 1e11; // more recently added → more negative → sorts first
