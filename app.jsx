@@ -2175,7 +2175,29 @@ function AddForm({ onAdd }) {
 function Bookings({ clients, gigs, writeGigs, totals }) {
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
-  const [g, setG] = useState({ artist: "", date: "", note: "" });
+  const [g, setG] = useState({
+    artist: "",
+    date: "",
+    note: "",
+    location: "",
+    makeupQty: 0,
+    makeupRate: 70,
+    hairQty: 0,
+    hairRate: 80,
+    travel: 0,
+  });
+  const setG2 = (id, k, v) => setG({ ...g, [k]: v });
+  const gigPayout = (x) =>
+    (Number(x.makeupQty) || 0) * (Number(x.makeupRate) || 0) +
+    (Number(x.hairQty) || 0) * (Number(x.hairRate) || 0) +
+    (Number(x.travel) || 0);
+  const gigServices = (x) =>
+    [
+      x.makeupQty > 0 ? `${x.makeupQty} makeup` : null,
+      x.hairQty > 0 ? `${x.hairQty} hair` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   const viewed = new Date();
   viewed.setDate(1);
@@ -2223,9 +2245,11 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
       id: x.id,
       date: x.date,
       name: x.artist,
-      sub: x.note || "",
+      sub: [gigServices(x), x.note].filter(Boolean).join(" · "),
+      location: x.location || "",
       confirmed: true,
       own: false,
+      pay: gigPayout(x),
     }));
 
   const all = [...mine, ...theirs].sort((a, b) =>
@@ -2242,11 +2266,23 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
   const ownRevenue = mine
     .filter((x) => x.confirmed && x.primary)
     .reduce((s, x) => s + x.money, 0);
+  const theirsRevenue = theirs.reduce((s, x) => s + x.pay, 0);
+  const totalRevenue = ownRevenue + theirsRevenue;
 
   const addGig = () => {
     if (!g.artist.trim() || !g.date) return;
     writeGigs([...gigs, { id: "g" + Date.now(), ...g }]);
-    setG({ artist: "", date: "", note: "" });
+    setG({
+      artist: "",
+      date: "",
+      note: "",
+      location: "",
+      makeupQty: 0,
+      makeupRate: 70,
+      hairQty: 0,
+      hairRate: 80,
+      travel: 0,
+    });
     setAdding(false);
   };
 
@@ -2276,8 +2312,16 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
           </span>
         </div>
         <div className="stat">
+          <b>{money(totalRevenue)}</b>
+          <span>earned total this month</span>
+        </div>
+        <div className="stat">
           <b>{money(ownRevenue)}</b>
           <span>from your own confirmed bookings</span>
+        </div>
+        <div className="stat">
+          <b>{money(theirsRevenue)}</b>
+          <span>from other artists' bookings</span>
         </div>
       </div>
 
@@ -2314,7 +2358,47 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
                 onChange={(e) => setG({ ...g, note: e.target.value })}
               />
             </Field>
+            <Field label="Getting ready at">
+              <input
+                value={g.location || ""}
+                placeholder="Hotel, address, or paste a Google Maps link…"
+                onChange={(e) => setG({ ...g, location: e.target.value })}
+              />
+              {g.location && (
+                <a
+                  href={mapsLink(g.location)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="linkbtn"
+                  style={{ fontSize: 12, marginTop: 4, display: "inline-block" }}
+                >
+                  📍 Open in Google Maps
+                </a>
+              )}
+            </Field>
           </div>
+
+          <div className="sub">What you did, and what it paid</div>
+          <div className="alines">
+            <ArtistLine a={g} label="Makeup" qtyKey="makeupQty" rateKey="makeupRate" set={setG2} />
+            <ArtistLine a={g} label="Hair service" qtyKey="hairQty" rateKey="hairRate" set={setG2} />
+            <div className={Number(g.travel) ? "aline on" : "aline"}>
+              <span className="aline-name">Travel</span>
+              <div className="stepper" />
+              <div className="svc-price-in">
+                <span>$</span>
+                <input
+                  type="number"
+                  value={g.travel}
+                  onChange={(e) => setG({ ...g, travel: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          {gigPayout(g) > 0 && (
+            <div className="hint">You'd earn {money(gigPayout(g))} for this one.</div>
+          )}
+
           <button
             className="slg-btn"
             disabled={!g.artist.trim() || !g.date}
@@ -2347,6 +2431,17 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
             <div className="row-main">
               <b>{x.name}</b>
               {x.sub && <div className="quiet">{x.sub}</div>}
+              {x.location && (
+                <a
+                  href={mapsLink(x.location)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="linkbtn"
+                  style={{ fontSize: 11 }}
+                >
+                  📍 {x.location}
+                </a>
+              )}
             </div>
             <div className="row-right">
               {x.own ? (
@@ -2357,7 +2452,10 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
                   </span>
                 </>
               ) : (
-                <span className="chip">other artist</span>
+                <>
+                  {x.pay > 0 && <b>{money(x.pay)}</b>}
+                  <span className="chip">other artist</span>
+                </>
               )}
             </div>
             {!x.own && (
