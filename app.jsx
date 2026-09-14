@@ -2172,21 +2172,108 @@ function AddForm({ onAdd }) {
 
 /* ---------------- bookings by month ---------------- */
 
+/* Shared by the "Add other artist booking" form and by editing an
+   existing one — same fields either way, just pointed at a different
+   `set`. */
+function GigFields({ g, set, showPayout }) {
+  const payout =
+    (Number(g.makeupQty) || 0) * (Number(g.makeupRate) || 0) +
+    (Number(g.hairQty) || 0) * (Number(g.hairRate) || 0) +
+    (Number(g.travel) || 0);
+  return (
+    <>
+      <div className="grid2">
+        <Field label="Artist you're working for">
+          <input
+            value={g.artist}
+            placeholder="Her name or studio"
+            onChange={(e) => set("artist", e.target.value)}
+          />
+        </Field>
+        <Field label="Date booked">
+          <input
+            type="date"
+            value={g.date}
+            onChange={(e) => set("date", e.target.value)}
+          />
+        </Field>
+        <Field label="Note (optional)">
+          <input
+            value={g.note || ""}
+            placeholder="Bride, venue, call time…"
+            onChange={(e) => set("note", e.target.value)}
+          />
+        </Field>
+        <Field label="Getting ready at">
+          <input
+            value={g.location || ""}
+            placeholder="Hotel, address, or paste a Google Maps link…"
+            onChange={(e) => set("location", e.target.value)}
+          />
+          {g.location && (
+            <a
+              href={mapsLink(g.location)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="linkbtn"
+              style={{ fontSize: 12, marginTop: 4, display: "inline-block" }}
+            >
+              📍 Open in Google Maps
+            </a>
+          )}
+        </Field>
+      </div>
+
+      <div className="sub">What you did, and what it paid</div>
+      <div className="alines">
+        <ArtistLine a={g} label="Makeup" qtyKey="makeupQty" rateKey="makeupRate" set={(id, k, v) => set(k, v)} />
+        <ArtistLine a={g} label="Hair service" qtyKey="hairQty" rateKey="hairRate" set={(id, k, v) => set(k, v)} />
+        <div className={Number(g.travel) ? "aline on" : "aline"}>
+          <span className="aline-name">Travel</span>
+          <div className="stepper" />
+          <div className="svc-price-in">
+            <span>$</span>
+            <input
+              type="number"
+              value={g.travel}
+              onChange={(e) => set("travel", e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+      {showPayout && payout > 0 && (
+        <div className="hint">You'd earn {money(payout)} for this one.</div>
+      )}
+
+      <div className="sub">Notes</div>
+      <textarea
+        rows={3}
+        value={g.notes || ""}
+        placeholder="Anything you want to remember about this one…"
+        onChange={(e) => set("notes", e.target.value)}
+      />
+    </>
+  );
+}
+
 function Bookings({ clients, gigs, writeGigs, totals }) {
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [editingGig, setEditingGig] = useState(null);
   const [g, setG] = useState({
     artist: "",
     date: "",
     note: "",
     location: "",
+    notes: "",
     makeupQty: 0,
     makeupRate: 70,
     hairQty: 0,
     hairRate: 80,
     travel: 0,
   });
-  const setG2 = (id, k, v) => setG({ ...g, [k]: v });
+  const patchGig = (id, p) =>
+    writeGigs(gigs.map((y) => (y.id === id ? { ...y, ...p } : y)));
   const gigPayout = (x) =>
     (Number(x.makeupQty) || 0) * (Number(x.makeupRate) || 0) +
     (Number(x.hairQty) || 0) * (Number(x.hairRate) || 0) +
@@ -2277,6 +2364,7 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
       date: "",
       note: "",
       location: "",
+      notes: "",
       makeupQty: 0,
       makeupRate: 70,
       hairQty: 0,
@@ -2336,69 +2424,7 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
 
       {adding && (
         <div className="addform">
-          <div className="grid2">
-            <Field label="Artist you're working for">
-              <input
-                value={g.artist}
-                placeholder="Her name or studio"
-                onChange={(e) => setG({ ...g, artist: e.target.value })}
-              />
-            </Field>
-            <Field label="Date booked">
-              <input
-                type="date"
-                value={g.date}
-                onChange={(e) => setG({ ...g, date: e.target.value })}
-              />
-            </Field>
-            <Field label="Note (optional)">
-              <input
-                value={g.note}
-                placeholder="Bride, venue, call time…"
-                onChange={(e) => setG({ ...g, note: e.target.value })}
-              />
-            </Field>
-            <Field label="Getting ready at">
-              <input
-                value={g.location || ""}
-                placeholder="Hotel, address, or paste a Google Maps link…"
-                onChange={(e) => setG({ ...g, location: e.target.value })}
-              />
-              {g.location && (
-                <a
-                  href={mapsLink(g.location)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="linkbtn"
-                  style={{ fontSize: 12, marginTop: 4, display: "inline-block" }}
-                >
-                  📍 Open in Google Maps
-                </a>
-              )}
-            </Field>
-          </div>
-
-          <div className="sub">What you did, and what it paid</div>
-          <div className="alines">
-            <ArtistLine a={g} label="Makeup" qtyKey="makeupQty" rateKey="makeupRate" set={setG2} />
-            <ArtistLine a={g} label="Hair service" qtyKey="hairQty" rateKey="hairRate" set={setG2} />
-            <div className={Number(g.travel) ? "aline on" : "aline"}>
-              <span className="aline-name">Travel</span>
-              <div className="stepper" />
-              <div className="svc-price-in">
-                <span>$</span>
-                <input
-                  type="number"
-                  value={g.travel}
-                  onChange={(e) => setG({ ...g, travel: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-          {gigPayout(g) > 0 && (
-            <div className="hint">You'd earn {money(gigPayout(g))} for this one.</div>
-          )}
-
+          <GigFields g={g} set={(k, v) => setG({ ...g, [k]: v })} showPayout />
           <button
             className="slg-btn"
             disabled={!g.artist.trim() || !g.date}
@@ -2420,51 +2446,77 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
 
       {all.map((x) => {
         const d = parseDate(x.date);
+        const gigObj = !x.own ? gigs.find((y) => y.id === x.id) : null;
+        const isEditing = !x.own && editingGig === x.id;
         return (
-          <div key={(x.own ? "c" : "g") + x.id} className="row">
-            <div className="daybox">
-              <b>{d ? d.getDate() : "—"}</b>
-              <span>
-                {d ? d.toLocaleDateString("en-US", { weekday: "short" }) : ""}
-              </span>
-            </div>
-            <div className="row-main">
-              <b>{x.name}</b>
-              {x.sub && <div className="quiet">{x.sub}</div>}
-              {x.location && (
-                <a
-                  href={mapsLink(x.location)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="linkbtn"
-                  style={{ fontSize: 11 }}
-                >
-                  📍 {x.location}
-                </a>
+          <div key={(x.own ? "c" : "g") + x.id}>
+            <div className="row">
+              <div className="daybox">
+                <b>{d ? d.getDate() : "—"}</b>
+                <span>
+                  {d ? d.toLocaleDateString("en-US", { weekday: "short" }) : ""}
+                </span>
+              </div>
+              <div className="row-main">
+                <b>{x.name}</b>
+                {x.sub && <div className="quiet">{x.sub}</div>}
+                {gigObj?.notes && !isEditing && (
+                  <div className="quiet">📝 {gigObj.notes}</div>
+                )}
+                {x.location && (
+                  <a
+                    href={mapsLink(x.location)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="linkbtn"
+                    style={{ fontSize: 11 }}
+                  >
+                    📍 {x.location}
+                  </a>
+                )}
+              </div>
+              <div className="row-right">
+                {x.own ? (
+                  <>
+                    {x.money > 0 && <b>{money(x.money)}</b>}
+                    <span className={x.confirmed ? "quiet" : "chip alert"}>
+                      {x.confirmed ? x.stage : "not confirmed"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {x.pay > 0 && <b>{money(x.pay)}</b>}
+                    <span className="chip">other artist</span>
+                  </>
+                )}
+              </div>
+              {!x.own && (
+                <>
+                  <button
+                    className="paybtn"
+                    onClick={() => setEditingGig(isEditing ? null : x.id)}
+                  >
+                    {isEditing ? "Done" : "Edit"}
+                  </button>
+                  <button
+                    className="paybtn"
+                    onClick={() => {
+                      writeGigs(gigs.filter((y) => y.id !== x.id));
+                      if (isEditing) setEditingGig(null);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </>
               )}
             </div>
-            <div className="row-right">
-              {x.own ? (
-                <>
-                  {x.money > 0 && <b>{money(x.money)}</b>}
-                  <span className={x.confirmed ? "quiet" : "chip alert"}>
-                    {x.confirmed ? x.stage : "not confirmed"}
-                  </span>
-                </>
-              ) : (
-                <>
-                  {x.pay > 0 && <b>{money(x.pay)}</b>}
-                  <span className="chip">other artist</span>
-                </>
-              )}
-            </div>
-            {!x.own && (
-              <button
-                className="paybtn"
-                onClick={() => writeGigs(gigs.filter((y) => y.id !== x.id))}
-              >
-                Remove
-              </button>
+            {isEditing && gigObj && (
+              <div className="addform">
+                <GigFields
+                  g={gigObj}
+                  set={(k, v) => patchGig(gigObj.id, { [k]: v })}
+                />
+              </div>
             )}
           </div>
         );
