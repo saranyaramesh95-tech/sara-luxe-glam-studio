@@ -259,6 +259,26 @@ That's it — from then on you'll get a push notification the moment a new
 inquiry comes in, and once each morning (after 8am Central) with today's
 routine focus and any follow-ups due.
 
+### 10. Keeping the Supabase project from pausing itself
+
+Supabase's free tier automatically pauses a project after 7 days with no
+activity (a trip, a slow week, etc. is enough to trigger it) — you get a
+warning email first, then a second email once it actually pauses. A paused
+project can be un-paused with one click in the dashboard any time within
+90 days, so **nothing is lost or deleted** just from pausing — but it's one
+more thing to deal with, especially if you're away when it happens.
+
+This repo includes a scheduled check — [`.github/workflows/keep-supabase-awake.yml`](.github/workflows/keep-supabase-awake.yml) —
+that quietly pings the project every 3 days (comfortably inside that 7-day
+window) so it never goes idle long enough to pause. It's already on, needs
+no setup, and costs nothing — GitHub runs it for you. You can see it run
+(or trigger it by hand) under this repo's **Actions** tab.
+
+If you'd rather remove the auto-pause risk entirely instead of relying on
+a ping, Supabase's own fix is upgrading that project to **Pro** (~$25/mo)
+from **Billing** in the dashboard — paused projects don't apply to Pro
+plans at all.
+
 ## Day to day
 
 - Open the GitHub Pages URL on your phone or laptop, sign in once (it'll
@@ -278,3 +298,14 @@ routine focus and any follow-ups due.
 - **Signed in but no clients show up** → you haven't done step 6 (Restore)
   yet, or you're signed in with a different Supabase user than the one you
   restored the backup under.
+- **A device you hadn't touched in a while shows older data than you
+  expect** → before being away for a stretch (a trip, etc.), it's worth
+  fully closing the app on every device beforehand rather than leaving a
+  tab open in the background. The app now merges edits between devices
+  client-by-client, using whichever copy of each client was actually
+  touched most recently — so a stale tab reappearing after days away no
+  longer overwrites newer edits made elsewhere, it just contributes
+  whatever (if anything) you actually changed on it. If something still
+  looks off after that, **Download backup** regularly (or rely on the
+  weekly automatic one from step 7) means you're never more than a
+  Restore away from getting it back.

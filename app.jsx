@@ -631,6 +631,15 @@ function SaraLuxeGlamStudio() {
         backfilled = true;
         return { ...cl, preWeddingTodos: seedPreWeddingTodos() };
       });
+      /* one-time backfill: give every client from before the per-client
+         sync merge existed a real updatedAt, so the merge in writeClients
+         has something meaningful to compare from this point forward
+         instead of treating them all as equally (un)dated. */
+      const withUpdatedAt = withPreWedding.map((cl) => {
+        if (cl.updatedAt) return cl;
+        backfilled = true;
+        return { ...cl, updatedAt: Date.now() };
+      });
       /* one-time backfill: lock in today's retainer $ for any client already
          at "Retainer paid" or beyond from before that feature existed, so it
          stops moving once she adds services later. Uses the freshly-loaded
@@ -649,7 +658,7 @@ function SaraLuxeGlamStudio() {
         if (cl.secondArtistTravel) sum += Number(rSet.secondArtistTravel) || 0;
         return sum;
       };
-      const withRetainerLock = withPreWedding.map((cl) => {
+      const withRetainerLock = withUpdatedAt.map((cl) => {
         if (
           cl.stage >= 3 &&
           (cl.retainerLocked === undefined || cl.retainerLocked === null || cl.retainerLocked === "")
@@ -742,17 +751,35 @@ function SaraLuxeGlamStudio() {
       try {
         const latest = await load(KEYS.clients, []);
         const latestArr = Array.isArray(latest) ? latest : [];
+        const latestById = new Map(latestArr.map((c) => [c.id, c]));
         const nextIds = new Set(next.map((c) => c.id));
+
+        /* Per-client merge, not just "is it missing": a device that's been
+           sitting open for days (phone put away on a trip, a laptop tab
+           left asleep) still has every client in memory, just with stale
+           field values. The old check only caught clients that vanished
+           entirely — it did nothing to stop that stale device from saving
+           its outdated version of a client straight over edits made
+           elsewhere since, which is exactly what reverted the whole
+           pipeline to old data. Comparing `updatedAt` per client (stamped
+           in `patch`) means only the client actually being edited right
+           now wins locally — every other client defers to whichever copy,
+           local or remote, was genuinely touched more recently. */
+        const reconciled = next.map((c) => {
+          const remote = latestById.get(c.id);
+          if (!remote) return c;
+          const localTime = Number(c.updatedAt) || 0;
+          const remoteTime = Number(remote.updatedAt) || 0;
+          return remoteTime > localTime ? remote : c;
+        });
+
         const missing = latestArr.filter(
           (c) => !nextIds.has(c.id) && !knownIds.has(c.id)
         );
-        if (missing.length) {
-          const merged = [...next, ...missing];
-          setClients(merged);
-          save(KEYS.clients, merged);
-        } else {
-          save(KEYS.clients, next);
-        }
+
+        const merged = missing.length ? [...reconciled, ...missing] : reconciled;
+        if (JSON.stringify(merged) !== JSON.stringify(next)) setClients(merged);
+        save(KEYS.clients, merged);
       } catch (e) {
         console.error("Could not check for newer clients before saving", e);
         save(KEYS.clients, next);
@@ -856,6 +883,7 @@ function SaraLuxeGlamStudio() {
       location: "",
       extraDates: [],
       leadSource: "",
+      updatedAt: Date.now(),
       ...draft,
     };
     writeClients([...clients, c]);
@@ -889,6 +917,10 @@ function SaraLuxeGlamStudio() {
         if (p.stage !== undefined && p.stage >= 4 && !next.balanceMonth)
           next.balanceMonth = monthKey();
         if (p.stage !== undefined && p.stage < 4) next.balanceMonth = null;
+        // Stamped on every real edit so writeClients can tell, per client,
+        // which copy was actually touched most recently when reconciling
+        // against another device's save.
+        next.updatedAt = Date.now();
         return next;
       })
     );

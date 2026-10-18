@@ -1,0 +1,26 @@
+name: Keep Supabase project awake
+
+# Supabase's free tier auto-pauses a project after 7 days with no API
+# activity. This pings it every 3 days — comfortably inside that window —
+# so it never goes quiet long enough to trigger a pause, even if nobody
+# opens the app for a while (a trip, a slow week, etc).
+#
+# The call just reads one row's key from app_state with the public anon
+# key — already safe to be public (see config.js), and Row Level Security
+# means it can't see or change anyone's actual data. It only needs to
+# register as "activity" to Supabase, nothing more.
+
+on:
+  schedule:
+    - cron: "0 14 */3 * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sf "https://juuabhtlvawcbzdfvwfs.supabase.co/rest/v1/app_state?select=key&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1dWFiaHRsdmF3Y2J6ZGZ2d2ZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3NDQ2NzEsImV4cCI6MjEwMjMyMDY3MX0._iJMQvnIGjI9AZE8hXHtfvgRczeyw5DOcW6_E_uZrcc" \
+            -o /dev/null -w "Supabase responded: HTTP %{http_code}\n"
