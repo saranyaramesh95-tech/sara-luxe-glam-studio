@@ -561,42 +561,65 @@ const KEYS = {
    same data shows up on every device you sign into, instead of the
    Claude-only window.storage API this app was originally written against. */
 async function load(key, fallback) {
-  try {
-    const value = await window.cloudStore.get(key);
-    return value === null || value === undefined ? fallback : value;
-  } catch (e) {
-    console.error("Could not load", key, e);
-    return fallback;
-  }
+  /* Deliberately NOT swallowing errors: a failed read used to quietly return
+     the fallback (seed clients / defaults), and the app would then show —
+     and even save — that blank data over the real thing. Callers decide what
+     to do when the cloud can't be reached. */
+  const value = await window.cloudStore.get(key);
+  return value === null || value === undefined ? fallback : value;
 }
 /* Tracks in-flight saves so the app can show "Saving…" and, more
    importantly, warn before the tab/app is closed with a save still not
    confirmed on the server — closing mid-save silently loses that change. */
 window.__pendingSaves = 0;
-function announceSaveStatus() {
-  window.dispatchEvent(
-    new CustomEvent("slg-save-status", { detail: { pending: window.__pendingSaves } })
-  );
-}
 window.addEventListener("beforeunload", (e) => {
-  if (window.__pendingSaves > 0) {
+  if (window.__pendingSaves > 0 || Object.keys(window.__failedSaves || {}).length) {
     e.preventDefault();
     e.returnValue = "";
   }
 });
 
+/* Saves that still failed after retrying, keyed by storage key, so the UI
+   can say so (instead of claiming "All changes saved") and offer a retry. */
+window.__failedSaves = {};
+function announceSaveStatus() {
+  window.dispatchEvent(
+    new CustomEvent("slg-save-status", {
+      detail: {
+        pending: window.__pendingSaves,
+        failed: Object.keys(window.__failedSaves).length,
+        loadFailed: !!window.__loadFailed,
+      },
+    })
+  );
+}
 async function save(key, value) {
   window.__pendingSaves++;
   announceSaveStatus();
-  try {
-    await window.cloudStore.set(key, value);
-  } catch (e) {
-    console.error("Could not save", key, e);
-  } finally {
-    window.__pendingSaves--;
-    announceSaveStatus();
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await window.cloudStore.set(key, value);
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+    }
   }
+  if (lastErr) {
+    console.error("Could not save", key, lastErr);
+    window.__failedSaves[key] = value;
+  } else {
+    delete window.__failedSaves[key];
+  }
+  window.__pendingSaves--;
+  announceSaveStatus();
 }
+window.retryFailedSaves = async () => {
+  const entries = Object.entries(window.__failedSaves);
+  for (const [k, v] of entries) await save(k, v);
+};
 
 /* ---------------- app ---------------- */
 
@@ -612,16 +635,47 @@ function SaraLuxeGlamStudio() {
   const [msgClient, setMsgClient] = useState("");
   const [gigs, setGigs] = useState([]);
   const [biz, setBiz] = useState(DEFAULT_BIZ);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
+    let loading = false;
     const loadAll = async () => {
-      const [c, r, t, g, b] = await Promise.all([
-        load(KEYS.clients, SEED_CLIENTS),
-        load(KEYS.rates, { services: DEFAULT_RATES, settings: DEFAULT_SETTINGS }),
-        load(KEYS.templates, DEFAULT_TEMPLATES),
-        load(KEYS.gigs, []),
-        load(KEYS.biz, DEFAULT_BIZ),
-      ]);
+      /* Never refresh over edits that haven't reached the cloud yet — the
+         older server copy would replace what was just typed. */
+      if (loading) return;
+      if (window.__pendingSaves > 0 || Object.keys(window.__failedSaves || {}).length) return;
+      loading = true;
+      let c, r, t, g, b;
+      try {
+        [c, r, t, g, b] = await Promise.all([
+          load(KEYS.clients, SEED_CLIENTS),
+          load(KEYS.rates, { services: DEFAULT_RATES, settings: DEFAULT_SETTINGS }),
+          load(KEYS.templates, DEFAULT_TEMPLATES),
+          load(KEYS.gigs, []),
+          load(KEYS.biz, DEFAULT_BIZ),
+        ]);
+      } catch (e) {
+        /* Couldn't reach the cloud. Keep whatever is on screen as-is and,
+           above all, don't backfill-save anything: showing stale/blank data
+           is bad, writing it back over the real data is worse. */
+        console.error("Could not load from the cloud", e);
+        loading = false;
+        setLoadError(true);
+        window.__loadFailed = true;
+        announceSaveStatus();
+        return;
+      }
+      /* a save may have started while we were fetching — that fetch is now
+         older than what's on screen, so drop it */
+      if (window.__pendingSaves > 0) {
+        loading = false;
+        return;
+      }
+      setLoadError(false);
+      if (window.__loadFailed) {
+        window.__loadFailed = false;
+        announceSaveStatus();
+      }
       /* one-time backfill: give any client from before this feature existed
          the same 2-weeks-before checklist new clients get automatically */
       const rawClients = Array.isArray(c) ? c : [];
@@ -661,7 +715,7 @@ function SaraLuxeGlamStudio() {
       const withRetainerLock = withUpdatedAt.map((cl) => {
         if (
           cl.stage >= 3 &&
-          (cl.retainerLocked === undefined || cl.retainerLocked === null || cl.retainerLocked === "")
+          cl.retainerLocked === undefined
         ) {
           backfilled = true;
           const pct = Math.round((sumFor(cl) * (Number(rSet.retainerPct) || 0)) / 100);
@@ -701,6 +755,7 @@ function SaraLuxeGlamStudio() {
       merged.routine = { ...merged.routine, done, wk: nowWk, mo: nowMo };
       setBiz(merged);
       setReady(true);
+      loading = false;
     };
 
     loadAll();
@@ -714,9 +769,17 @@ function SaraLuxeGlamStudio() {
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
+    window.addEventListener("pageshow", onVisible); // phone home-screen apps waking up
+    window.addEventListener("online", onVisible); // signal came back
+    // also quietly re-check every couple of minutes while the app is open
+    // and in view, so a long-open tab can't drift far from the cloud copy
+    const poll = setInterval(onVisible, 120000);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
+      window.removeEventListener("pageshow", onVisible);
+      window.removeEventListener("online", onVisible);
+      clearInterval(poll);
     };
   }, []);
 
@@ -929,7 +992,19 @@ function SaraLuxeGlamStudio() {
     return (
       <div className="slg-root">
         <style>{CSS}</style>
-        <div className="slg-loading">Opening the studio…</div>
+        <div className="slg-loading">
+          {loadError ? (
+            <>
+              Couldn't reach your data just now — nothing has been changed.
+              <br />
+              <button className="slg-btn" style={{ marginTop: 12 }} onClick={() => window.location.reload()}>
+                Try again
+              </button>
+            </>
+          ) : (
+            "Opening the studio…"
+          )}
+        </div>
       </div>
     );
 

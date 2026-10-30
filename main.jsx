@@ -204,15 +204,19 @@ function Root() {
 }
 
 function SaveStatus() {
-  const [pending, setPending] = useState2(window.__pendingSaves || 0);
+  const [st, setSt] = useState2({
+    pending: window.__pendingSaves || 0,
+    failed: 0,
+    loadFailed: false,
+  });
   const [showSaved, setShowSaved] = useState2(false);
 
   useEffect2(() => {
     let savedTimer = null;
     const onStatus = (e) => {
-      const p = e.detail.pending;
-      setPending(p);
-      if (p === 0) {
+      const d = e.detail;
+      setSt({ pending: d.pending, failed: d.failed || 0, loadFailed: !!d.loadFailed });
+      if (d.pending === 0 && !d.failed) {
         setShowSaved(true);
         clearTimeout(savedTimer);
         savedTimer = setTimeout(() => setShowSaved(false), 2000);
@@ -225,10 +229,36 @@ function SaveStatus() {
     };
   }, []);
 
-  if (pending > 0) {
+  if (st.failed > 0 && st.pending === 0) {
+    return (
+      <button
+        onClick={() => window.retryFailedSaves && window.retryFailedSaves()}
+        style={{
+          fontSize: 12,
+          padding: "5px 10px",
+          cursor: "pointer",
+          border: "1px solid #c0392b",
+          borderRadius: 6,
+          background: "#fdecea",
+          color: "#c0392b",
+          fontWeight: 600,
+        }}
+      >
+        Not saved — tap to retry
+      </button>
+    );
+  }
+  if (st.pending > 0) {
     return (
       <span style={{ fontSize: 12, color: "#a67c1d", fontWeight: 500 }}>
         Saving…
+      </span>
+    );
+  }
+  if (st.loadFailed) {
+    return (
+      <span style={{ fontSize: 12, color: "#c0392b", fontWeight: 500 }}>
+        Offline — may not be latest
       </span>
     );
   }
