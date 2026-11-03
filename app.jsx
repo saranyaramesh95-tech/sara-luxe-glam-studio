@@ -1,5 +1,5 @@
 /* React globals — loaded via CDN <script> tags in index.html, no bundler here. */
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 /* ---------------- data helpers ---------------- */
 
@@ -560,6 +560,13 @@ const KEYS = {
 /* Cloud storage: backed by Supabase (see cloudStore in index.html) so the
    same data shows up on every device you sign into, instead of the
    Claude-only window.storage API this app was originally written against. */
+/* how many real clients (not the built-in samples) a list holds */
+const SAMPLE_NAMES = ["April 2027 enquiry", "Thursday enquiry (Jul 30)"];
+const isSampleClient = (x) =>
+  String(x.id || "").startsWith("seed-") && SAMPLE_NAMES.includes(x.name);
+const realClientCount = (arr) =>
+  (Array.isArray(arr) ? arr : []).filter((x) => !isSampleClient(x)).length;
+
 async function load(key, fallback) {
   /* Deliberately NOT swallowing errors: a failed read used to quietly return
      the fallback (seed clients / defaults), and the app would then show —
@@ -636,6 +643,12 @@ function SaraLuxeGlamStudio() {
   const [gigs, setGigs] = useState([]);
   const [biz, setBiz] = useState(DEFAULT_BIZ);
   const [loadError, setLoadError] = useState(false);
+  /* set when the cloud copy has far fewer clients than this device last saw */
+  const [cloudAlert, setCloudAlert] = useState(null);
+  const clientsRef = useRef([]);
+  useEffect(() => {
+    clientsRef.current = clients;
+  }, [clients]);
 
   useEffect(() => {
     let loading = false;
@@ -670,6 +683,27 @@ function SaraLuxeGlamStudio() {
       if (window.__pendingSaves > 0) {
         loading = false;
         return;
+      }
+      /* Safety check before trusting what the cloud returned: if it has
+         far fewer clients than this device was just showing (or last saw),
+         something has overwritten it. Don't adopt it, don't save anything —
+         warn instead, and let her put her own copy back with one tap. */
+      let deviceCopy = null;
+      try {
+        deviceCopy = JSON.parse(localStorage.getItem("slg:lastGood") || "null");
+      } catch (e) {}
+      const remoteReal = realClientCount(c);
+      const memReal = realClientCount(clientsRef.current);
+      const refReal = Math.max(memReal, deviceCopy ? realClientCount(deviceCopy.clients) : 0);
+      const shrunk = refReal >= 4 && remoteReal < refReal * 0.5;
+      if (shrunk) {
+        setCloudAlert({ remote: remoteReal, local: refReal });
+        if (memReal >= 4) {
+          loading = false;
+          return;
+        }
+      } else {
+        setCloudAlert(null);
       }
       setLoadError(false);
       if (window.__loadFailed) {
@@ -756,6 +790,22 @@ function SaraLuxeGlamStudio() {
       setBiz(merged);
       setReady(true);
       loading = false;
+      if (!shrunk && remoteReal >= 1) {
+        try {
+          localStorage.setItem(
+            "slg:lastGood",
+            JSON.stringify({
+              savedAt: Date.now(),
+              clients: withRetainerLock,
+              gigs: Array.isArray(g) ? g : [],
+              biz: merged,
+              rates: rSvc,
+              settings: rSet,
+              templates: mergedTemplates,
+            })
+          );
+        } catch (e) {}
+      }
     };
 
     loadAll();
@@ -789,11 +839,23 @@ function SaraLuxeGlamStudio() {
   };
 
   const writeGigs = (next) => {
+    if (gigs.length >= 6 && next.length < gigs.length * 0.5) {
+      window.alert(
+        `That would remove ${gigs.length - next.length} of your ${gigs.length} other-artist bookings at once, so it was NOT saved. If you really meant to, remove them one at a time.`
+      );
+      return;
+    }
     setGigs(next);
     save(KEYS.gigs, next);
   };
 
   const writeClients = (next, opts = {}) => {
+    if (!opts.force && clients.length >= 4 && next.length < clients.length * 0.5) {
+      window.alert(
+        `That would remove ${clients.length - next.length} of your ${clients.length} clients at once, so it was NOT saved. If you really meant to, remove them one at a time.`
+      );
+      return;
+    }
     setClients(next);
     if (opts.force) {
       // Restoring a backup is a deliberate full replace — save exactly
@@ -1008,9 +1070,59 @@ function SaraLuxeGlamStudio() {
       </div>
     );
 
+  const putMyCopyBack = () => {
+    let src = { clients, gigs, biz, rates, settings, templates };
+    try {
+      const dev = JSON.parse(localStorage.getItem("slg:lastGood") || "null");
+      if (dev && realClientCount(dev.clients) > realClientCount(clients)) {
+        src = dev;
+        setGigs(dev.gigs || []);
+        setBiz(dev.biz || biz);
+        setRates(dev.rates || rates);
+        setSettings(dev.settings || settings);
+        if (Array.isArray(dev.templates)) setTemplates(dev.templates);
+      }
+    } catch (e) {}
+    setClients(src.clients);
+    save(KEYS.clients, src.clients);
+    save(KEYS.gigs, src.gigs || []);
+    save(KEYS.biz, src.biz || biz);
+    save(KEYS.rates, { services: src.rates || rates, settings: src.settings || settings });
+    if (Array.isArray(src.templates)) save(KEYS.templates, src.templates);
+    setCloudAlert(null);
+  };
+
   return (
     <div className="slg-root">
       <style>{CSS}</style>
+
+      {cloudAlert && (
+        <div
+          style={{
+            background: "#fdecea",
+            border: "1px solid #c0392b",
+            color: "#7a1f14",
+            padding: "12px 14px",
+            margin: "0 0 10px",
+            borderRadius: 4,
+            fontSize: 14,
+            lineHeight: 1.5,
+          }}
+        >
+          <b>Your saved data looks wrong.</b> The cloud now has only{" "}
+          {cloudAlert.remote} client{cloudAlert.remote === 1 ? "" : "s"}, but
+          this device last had {cloudAlert.local}. Nothing has been changed or
+          overwritten by this warning.
+          <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="slg-btn" onClick={putMyCopyBack}>
+              Put my copy back
+            </button>
+            <button className="slg-btn ghost" onClick={() => setCloudAlert(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <header className="slg-head">
         <div>
@@ -1121,6 +1233,8 @@ function SaraLuxeGlamStudio() {
               templates={templates}
               biz={biz}
               restore={(d) => {
+                try { localStorage.removeItem("slg:lastGood"); } catch (e) {}
+                setCloudAlert(null);
                 if (Array.isArray(d.clients)) writeClients(d.clients, { force: true });
                 if (Array.isArray(d.gigs)) writeGigs(d.gigs);
                 if (d.biz) writeBiz(d.biz);

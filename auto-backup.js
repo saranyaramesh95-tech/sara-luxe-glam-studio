@@ -71,8 +71,11 @@
 
       // Never save a backup of blank or built-in sample data — that is what a
       // failed load looks like, and it must not become the "latest" backup.
+      // (a sample card she has since renamed is a real client, so match the
+      // original sample names too)
+      const SAMPLE = ["April 2027 enquiry", "Thursday enquiry (Jul 30)"];
       const real = (bundle.clients || []).filter(
-        (c) => !String(c.id || "").startsWith("seed-")
+        (c) => !(String(c.id || "").startsWith("seed-") && SAMPLE.includes(c.name))
       );
       if (!real.length) return;
 
