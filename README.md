@@ -123,7 +123,7 @@ with check (bucket_id = 'backups' and (storage.foldername(name))[1] = auth.uid()
 ```
 
 That's it — no further setup. From then on, every time you open the app
-and it's been 7+ days since the last automatic backup, it quietly saves a
+and it's been a day since the last automatic backup, it quietly saves a
 fresh dated snapshot to that bucket, and deletes any of its own backups
 older than 90 days. It's silent — no button, no popup — check
 **Supabase → Storage → backups** if you ever want to see what's there.
@@ -259,7 +259,22 @@ That's it — from then on you'll get a push notification the moment a new
 inquiry comes in, and once each morning (after 8am Central) with today's
 routine focus and any follow-ups due.
 
-### 10. Keeping the Supabase project from pausing itself
+### 10. A safety net for your data: version history (strongly recommended)
+
+Run [`supabase-sql/keep-history.sql`](supabase-sql/keep-history.sql) once in
+**Supabase → SQL Editor** (paste it in, press Run). From then on, Supabase
+quietly keeps earlier versions of your data inside the database, so if
+anything ever overwrites it with the wrong thing, the version from just
+before is still there to copy back — no old backup file needed.
+
+To look at them: **Table Editor → app_state_history** (newest `saved_at`
+first, filter `key` to `slg:clients`, `slg:gigs`, `slg:biz`, …).
+
+Automatic backups (step 7) now run **daily** instead of weekly, each saved
+with its date and time so a later bad copy can't replace an earlier good
+one, and a backup is skipped if the app only has blank/sample data.
+
+### 11. Keeping the Supabase project from pausing itself
 
 Supabase's free tier automatically pauses a project after 7 days with no
 activity (a trip, a slow week, etc. is enough to trigger it) — you get a
@@ -285,7 +300,7 @@ plans at all.
   stay signed in), and use the app as normal.
 - Every save now goes straight to Supabase, so the other device sees it
   next time it loads.
-- Automatic weekly backups happen on their own (see step 7). You can still
+- Automatic daily backups happen on their own (see step 7). You can still
   use the app's built-in **Download backup** button any time you want a
   copy in hand immediately.
 

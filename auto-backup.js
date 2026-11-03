@@ -1,11 +1,11 @@
-/* Weekly automatic backup to Supabase Storage, with anything older than
+/* Daily automatic backup to Supabase Storage, with anything older than
    90 days cleaned up automatically. Runs quietly whenever the app is
-   opened and it's been a week (or more) since the last one — no button,
+   opened and it's been a day (or more) since the last one — no button,
    no reminder needed. Requires the "backups" storage bucket + policy from
    README.md (Automatic backups section). */
 (function () {
   const BUCKET = "backups";
-  const INTERVAL_DAYS = 7;
+  const INTERVAL_DAYS = 1;
   const RETENTION_DAYS = 90;
   const LAST_BACKUP_KEY = "slg:lastAutoBackupAt";
 
@@ -68,7 +68,18 @@
       if (!due) return;
 
       const bundle = await gatherBundle();
-      const fname = `${uid}/sara-luxe-glam-backup-${bundle.exportedAt.slice(0, 10)}.json`;
+
+      // Never save a backup of blank or built-in sample data — that is what a
+      // failed load looks like, and it must not become the "latest" backup.
+      const real = (bundle.clients || []).filter(
+        (c) => !String(c.id || "").startsWith("seed-")
+      );
+      if (!real.length) return;
+
+      // Date AND time in the name, so a later bad copy can never replace an
+      // earlier good one from the same day.
+      const stamp = bundle.exportedAt.slice(0, 16).replace("T", "-").replace(":", "");
+      const fname = `${uid}/sara-luxe-glam-backup-${stamp}.json`;
       const blob = new Blob([JSON.stringify(bundle, null, 2)], {
         type: "application/json",
       });

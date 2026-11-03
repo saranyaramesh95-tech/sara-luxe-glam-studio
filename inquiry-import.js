@@ -103,7 +103,14 @@
       if (error) throw error;
       if (!rows || !rows.length) return;
 
-      const existing = (await window.cloudStore.get("slg:clients")) || [];
+      const existing = await window.cloudStore.get("slg:clients");
+      // If the client list can't be read (missing/blocked), do NOT carry on
+      // as if it were empty — writing "just the new inquiries" back would
+      // replace every real client. Try again next time the app is opened.
+      if (!Array.isArray(existing)) {
+        console.error("Inquiry import skipped: couldn't read the client list.");
+        return;
+      }
       const newClients = rows.map(inquiryToClient);
       // Newest first, so among same-priority fresh inquiries the latest one
       // still lands on top.

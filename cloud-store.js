@@ -16,10 +16,15 @@
   }
   window.supabaseClient = client;
 
+  /* The signed-in user comes from the locally stored session. This used to
+     call auth.getUser() — a network request — before EVERY read and write.
+     When several fired at once (opening the app fires five reads together)
+     they could collide and fail, and a failed read made the app fall back
+     to its built-in sample clients and save those over the real ones. */
   async function currentUserId() {
-    const { data, error } = await client.auth.getUser();
+    const { data, error } = await client.auth.getSession();
     if (error) throw error;
-    const uid = data && data.user && data.user.id;
+    const uid = data && data.session && data.session.user && data.session.user.id;
     if (!uid) throw new Error("Not signed in");
     return uid;
   }
