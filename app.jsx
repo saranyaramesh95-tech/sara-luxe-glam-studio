@@ -330,6 +330,14 @@ const relTime = (ts) => {
   return `${days} days ago`;
 };
 
+/* how many second artists are travelling with her (was an on/off switch, so
+   old cards holding true mean 1) — each one adds the second-artist travel fee */
+const secondArtistCount = (c) => {
+  const v = c.secondArtistTravel;
+  if (typeof v === "number") return Math.max(0, Math.floor(v));
+  return v ? 1 : 0;
+};
+
 /* how many days this booking runs — the event date plus any extra day(s)
    she's added (consecutive or with a gap, e.g. mehendi + wedding). Only
    counts extra dates that actually got picked. */
@@ -766,7 +774,7 @@ function SaraLuxeGlamStudio() {
           if (s) sum += priceFor(cl, s) * (Number(qty) || 0);
         });
         if (cl.travel) sum += (Number(rSet.travelFee) || 0) * dayCountOf(cl);
-        if (cl.secondArtistTravel) sum += Number(rSet.secondArtistTravel) || 0;
+        sum += (Number(rSet.secondArtistTravel) || 0) * secondArtistCount(cl);
         return sum;
       };
       const withRetainerLock = withUpdatedAt.map((cl) => {
@@ -956,7 +964,7 @@ function SaraLuxeGlamStudio() {
         if (s) sum += priceFor(c, s) * (Number(qty) || 0);
       });
       if (c.travel) sum += (Number(settings.travelFee) || 0) * dayCountOf(c);
-      if (c.secondArtistTravel) sum += Number(settings.secondArtistTravel) || 0;
+      sum += (Number(settings.secondArtistTravel) || 0) * secondArtistCount(c);
     }
     // Once a retainer is locked in (paid), it stops moving even if services
     // get added/changed later — she wants to see exactly what's still owed
@@ -2162,13 +2170,6 @@ function Pipeline({
                         : `Beyond ${settings.travelRadius} mi (${money(settings.travelFee)})`
                     }
                   />
-                  <Toggle
-                    on={c.secondArtistTravel}
-                    onClick={() =>
-                      patch(c.id, { secondArtistTravel: !c.secondArtistTravel })
-                    }
-                    label={`Second artist travel (${money(settings.secondArtistTravel)})`}
-                  />
                   {c.type === "Bridal" && (
                     <Toggle
                       on={c.trial}
@@ -2182,6 +2183,36 @@ function Pipeline({
                       }
                     />
                   )}
+                </div>
+
+                <div className="alines">
+                  <div className={secondArtistCount(c) ? "aline on" : "aline"}>
+                    <span className="aline-name">
+                      Second artist travel ({money(settings.secondArtistTravel)} each)
+                    </span>
+                    <div className="stepper">
+                      <button
+                        onClick={() =>
+                          patch(c.id, {
+                            secondArtistTravel: Math.max(0, secondArtistCount(c) - 1),
+                          })
+                        }
+                      >
+                        –
+                      </button>
+                      <span>{secondArtistCount(c)}</span>
+                      <button
+                        onClick={() =>
+                          patch(c.id, { secondArtistTravel: secondArtistCount(c) + 1 })
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="aline-sum">
+                      {money((Number(settings.secondArtistTravel) || 0) * secondArtistCount(c))}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="sub">Agreed total</div>
