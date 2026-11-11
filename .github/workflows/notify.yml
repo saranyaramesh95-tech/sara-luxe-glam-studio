@@ -1,0 +1,57 @@
+name: Send phone notifications
+
+# Every 5 minutes: announces new website inquiries, booked events that are
+# 2 days away, and a daily list of follow-ups that are due. See
+# notifier/send.py. Needs two secrets (README step 9). Until both are added
+# this job just waits quietly instead of failing.
+#
+# "Run workflow" from the Actions tab with "Send a test notification" ticked
+# sends a test to every device that has enabled notifications.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Send a test notification"
+        type: boolean
+        default: false
+
+concurrency:
+  group: notifications
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: https://juuabhtlvawcbzdfvwfs.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+    steps:
+      - name: Check the keys are set up
+        id: check
+        run: |
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$VAPID_PRIVATE_KEY" ]; then
+            echo "::notice::Notification keys aren't added yet (README step 9) - nothing to do."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.ready == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        if: steps.check.outputs.ready == 'true'
+        run: pip install --quiet pywebpush requests
+
+      - name: Send
+        if: steps.check.outputs.ready == 'true'
+        run: python notifier/send.py ${{ inputs.test && '--test' || '' }}

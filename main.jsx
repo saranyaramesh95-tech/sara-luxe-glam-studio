@@ -274,7 +274,6 @@ function NotificationToggle() {
   // "unknown" while checking, then "unsupported" | "off" | "on"
   const [state, setState] = useState2("unknown");
   const [busy, setBusy] = useState2(false);
-  const [msg, setMsg] = useState2("");
 
   const refresh = async () => {
     if (!window.pushNotifications || !window.pushNotifications.isSupported()) {
@@ -290,44 +289,46 @@ function NotificationToggle() {
   }, []);
 
   const toggle = async () => {
+    // Not possible in this browser (e.g. iPhone Safari before "Add to Home
+    // Screen"): used to hide the button entirely, leaving no way to find
+    // out why. Now it explains exactly what to do.
+    if (state === "unsupported") {
+      window.alert(window.pushNotifications.unsupportedReason());
+      return;
+    }
     setBusy(true);
-    setMsg("");
     try {
       if (state === "on") {
         await window.pushNotifications.disable();
       } else {
         await window.pushNotifications.enable();
+        window.alert("Notifications are on for this device 🤍");
       }
       await refresh();
     } catch (e) {
-      setMsg(e.message || "Couldn't change that.");
+      window.alert(e.message || "Couldn't change that.");
     }
     setBusy(false);
   };
 
-  if (state === "unsupported" || state === "unknown") return null;
+  if (state === "unknown") return null;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      {msg && (
-        <span style={{ fontSize: 11, color: "#c0392b", maxWidth: 160 }}>{msg}</span>
-      )}
-      <button
-        onClick={toggle}
-        disabled={busy}
-        style={{
-          fontSize: 12,
-          padding: "5px 10px",
-          cursor: "pointer",
-          border: "1px solid #ccc",
-          borderRadius: 6,
-          background: state === "on" ? "#111" : "#fff",
-          color: state === "on" ? "#fff" : "#111",
-        }}
-      >
-        {busy ? "…" : state === "on" ? "Notifications on" : "Enable notifications"}
-      </button>
-    </div>
+    <button
+      onClick={toggle}
+      disabled={busy}
+      style={{
+        fontSize: 12,
+        padding: "5px 10px",
+        cursor: "pointer",
+        border: "1px solid #ccc",
+        borderRadius: 6,
+        background: state === "on" ? "#111" : "#fff",
+        color: state === "on" ? "#fff" : "#111",
+      }}
+    >
+      {busy ? "…" : state === "on" ? "Notifications on" : "Enable notifications"}
+    </button>
   );
 }
 
