@@ -1878,6 +1878,47 @@ function Pipeline({
   };
   const shown = clients.filter((c) => bucket(c) === filter);
 
+  /* Active list in three sections so this month's clients aren't buried
+     under a long scroll: (1) event this month, (2) follow-up overdue,
+     (3) everyone else. A client lands in only one, in that order. Can be
+     switched back to the single list. */
+  const [grouped, setGrouped] = useState(() => {
+    try {
+      return localStorage.getItem("slg:pipelineGrouped") !== "0";
+    } catch (e) {
+      return true;
+    }
+  });
+  const toggleGrouped = () => {
+    const next = !grouped;
+    setGrouped(next);
+    try {
+      localStorage.setItem("slg:pipelineGrouped", next ? "1" : "0");
+    } catch (e) {}
+  };
+  const thisMonthKey = monthKey();
+  const monthDays = (c) =>
+    [c.eventDate, ...(c.extraDates || [])]
+      .filter((d) => d && d.slice(0, 7) === thisMonthKey)
+      .sort();
+  const followUpOverdue = (c) => {
+    const n = c.nudgeOn ? daysUntil(c.nudgeOn) : null;
+    return c.stage < 3 && n !== null && n <= FOLLOWUP_GRACE_DAYS;
+  };
+  let groups = [{ key: "all", title: "", items: shown }];
+  if (filter === "active" && grouped) {
+    const month = shown
+      .filter((c) => monthDays(c).length)
+      .sort((a, b) => (monthDays(a)[0] < monthDays(b)[0] ? -1 : 1));
+    const followUp = shown.filter((c) => !monthDays(c).length && followUpOverdue(c));
+    const rest = shown.filter((c) => !monthDays(c).length && !followUpOverdue(c));
+    groups = [
+      { key: "month", title: "This month's clients", items: month },
+      { key: "follow", title: "Follow-up needed", items: followUp },
+      { key: "rest", title: "Remaining enquiries", items: rest },
+    ].filter((g) => g.items.length);
+  }
+
   return (
     <>
       {filter === "active" && <TaskRollup clients={clients} patch={patch} />}
@@ -1902,6 +1943,11 @@ function Pipeline({
         <span className="slg-count">
           {shown.length} {shown.length === 1 ? "client" : "clients"}
         </span>
+        {filter === "active" && (
+          <button className="linkbtn" onClick={toggleGrouped}>
+            {grouped ? "Show as one list" : "Group by priority"}
+          </button>
+        )}
         <button className="slg-btn" onClick={() => setAdding(!adding)}>
           {adding ? "Cancel" : "Add a client"}
         </button>
@@ -1928,7 +1974,14 @@ function Pipeline({
         </div>
       )}
 
-      {shown.map((c) => {
+      {groups.map((g) => (
+        <React.Fragment key={g.key}>
+          {g.title && (
+            <div className="sub">
+              {g.title} · {g.items.length}
+            </div>
+          )}
+          {g.items.map((c) => {
         const t = totals(c);
         const nudge = c.nudgeOn ? daysUntil(c.nudgeOn) : null;
         const overdue = c.stage < 3 && nudge !== null && nudge <= FOLLOWUP_GRACE_DAYS;
@@ -2353,6 +2406,8 @@ function Pipeline({
           </article>
         );
       })}
+        </React.Fragment>
+      ))}
     </>
   );
 }
