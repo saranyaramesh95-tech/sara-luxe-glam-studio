@@ -2329,6 +2329,9 @@ function Pipeline({
                   </div>
                 )}
 
+                <div className="sub">Payments received</div>
+                <PaymentLog c={c} total={t.total} retainer={t.retainer} patch={patch} />
+
                 <SecondArtists c={c} patch={patch} clientTotal={t.total} />
 
                 <Promised c={c} patch={patch} />
@@ -3018,8 +3021,129 @@ function PayBtn({ id, stage, label, pending, setPending, patch }) {
   );
 }
 
+/* Payments often arrive in pieces. This logs each one against the client
+   and shows paid so far and what's left of her total. */
+function PaymentLog({ c, total, retainer, patch }) {
+  const payments = c.payments || [];
+  const paid = payments.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const left = total - paid;
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(isoOf(new Date()));
+  const [note, setNote] = useState("");
+
+  const write = (next) => patch(c.id, { payments: next });
+  const add = () => {
+    const a = Number(amount);
+    if (!a) return;
+    write([...payments, { id: "p" + Date.now(), date, amount: a, note: note.trim() }]);
+    setAmount("");
+    setNote("");
+  };
+  const edit = (id, p) => write(payments.map((x) => (x.id === id ? { ...x, ...p } : x)));
+
+  return (
+    <div className="addform" style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+      <div className="ledger flat">
+        <div>
+          <span>Total</span>
+          <b>{money(total)}</b>
+        </div>
+        <div>
+          <span>Paid so far</span>
+          <b>{money(paid)}</b>
+        </div>
+        <div>
+          <span>{left < 0 ? "Paid over by" : "Left to pay"}</span>
+          <b className={left > 0 ? "owed" : ""}>
+            {total > 0 && left <= 0 && paid > 0 && left === 0 ? "Paid in full ✓" : money(Math.abs(left))}
+          </b>
+        </div>
+      </div>
+      {total <= 0 && (
+        <div className="hint">
+          Add her services (or an agreed total) on her card so "left to pay" has
+          something to count down from.
+        </div>
+      )}
+
+      {payments.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {[...payments]
+            .sort((a, b) => (a.date < b.date ? -1 : 1))
+            .map((x) => (
+              <div key={x.id} className="row">
+                <div className="row-main">
+                  <b>
+                    $
+                    <EditText
+                      value={String(x.amount)}
+                      onSave={(v) => edit(x.id, { amount: Number(v) || 0 })}
+                    />
+                  </b>
+                  <div className="quiet">
+                    {fmtDate(x.date)}
+                    {x.note ? ` · ${x.note}` : ""}
+                  </div>
+                </div>
+                <button
+                  className="paybtn"
+                  onClick={() => write(payments.filter((y) => y.id !== x.id))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
+
+      <div className="sub" style={{ marginTop: 10 }}>Log a payment</div>
+      <div className="grid2">
+        <Field label="Amount received">
+          <input
+            type="number"
+            value={amount}
+            placeholder="0"
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </Field>
+        <Field label="Date">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Note (optional)">
+          <input
+            value={note}
+            placeholder="Zelle, cash, retainer…"
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </Field>
+      </div>
+      <div className="card-actions">
+        {retainer > 0 && paid === 0 && (
+          <button className="slg-btn ghost" onClick={() => setAmount(String(retainer))}>
+            Retainer {money(retainer)}
+          </button>
+        )}
+        {left > 0 && paid > 0 && (
+          <button className="slg-btn ghost" onClick={() => setAmount(String(left))}>
+            Rest {money(left)}
+          </button>
+        )}
+        <button className="slg-btn" disabled={!Number(amount)} onClick={add}>
+          Add payment
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Payments({ clients, totals, settings, patch }) {
   const [pending, setPending] = useState(null);
+  const [openPay, setOpenPay] = useState(null);
+
+  /* what's still owed: counts down from what she has actually logged, and
+     falls back to the old "total minus retainer" when nothing is logged */
+  const paidOf = (c) => (c.payments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const owedOf = (c, t) => ((c.payments || []).length ? Math.max(0, t.total - paidOf(c)) : t.balance);
 
   const rows = clients
     .map((c) => ({ c, t: totals(c) }))
@@ -3039,7 +3163,7 @@ function Payments({ clients, totals, settings, patch }) {
           <span>retainers not in yet</span>
         </div>
         <div className="stat">
-          <b>{money(sum(awaitingBalance, "balance"))}</b>
+          <b>{money(awaitingBalance.reduce((n, r) => n + owedOf(r.c, r.t), 0))}</b>
           <span>balances still owed</span>
         </div>
       </div>
@@ -3050,20 +3174,38 @@ function Payments({ clients, totals, settings, patch }) {
       )}
       {awaitingBalance.map(({ c, t }) => {
         const d = daysUntil(t.balanceDue);
+        const logged = (c.payments || []).length > 0;
+        const owed = owedOf(c, t);
         return (
-          <div key={c.id} className={d !== null && d <= 3 ? "row soon" : "row"}>
-            <div className="row-main">
-              <b>{c.name}</b>
-              <span className="quiet"> · {fmtDate(c.eventDate)}</span>
+          <div key={c.id}>
+            <div className={d !== null && d <= 3 ? "row soon" : "row"}>
+              <div className="row-main">
+                <b>{c.name}</b>
+                <span className="quiet"> · {fmtDate(c.eventDate)}</span>
+                {logged && (
+                  <div className="quiet">
+                    paid {money(paidOf(c))} of {money(t.total)}
+                  </div>
+                )}
+              </div>
+              <div className="row-right">
+                <b>{logged && owed === 0 ? "Paid in full ✓" : money(owed)}</b>
+                <span className="quiet">
+                  {logged && owed > 0 ? "left · " : ""}due {fmtDate(t.balanceDue)}
+                  {d !== null && d <= 7 ? ` · ${d}d` : ""}
+                </span>
+              </div>
+              <button
+                className="paybtn"
+                onClick={() => setOpenPay(openPay === c.id ? null : c.id)}
+              >
+                {openPay === c.id ? "Close" : "Payments"}
+              </button>
+              <PayBtn id={c.id} stage={4} label="Balance received" pending={pending} setPending={setPending} patch={patch} />
             </div>
-            <div className="row-right">
-              <b>{money(t.balance)}</b>
-              <span className="quiet">
-                due {fmtDate(t.balanceDue)}
-                {d !== null && d <= 7 ? ` · ${d}d` : ""}
-              </span>
-            </div>
-            <PayBtn id={c.id} stage={4} label="Balance received" pending={pending} setPending={setPending} patch={patch} />
+            {openPay === c.id && (
+              <PaymentLog c={c} total={t.total} retainer={t.retainer} patch={patch} />
+            )}
           </div>
         );
       })}
@@ -3073,16 +3215,32 @@ function Payments({ clients, totals, settings, patch }) {
         <div className="slg-empty"><p className="quiet">Everyone's confirmed.</p></div>
       )}
       {awaitingRetainer.map(({ c, t }) => (
-        <div key={c.id} className="row">
-          <div className="row-main">
-            <b>{c.name}</b>
-            <span className="quiet"> · {STAGES[c.stage]}</span>
+        <div key={c.id}>
+          <div className="row">
+            <div className="row-main">
+              <b>{c.name}</b>
+              <span className="quiet"> · {STAGES[c.stage]}</span>
+              {(c.payments || []).length > 0 && (
+                <div className="quiet">
+                  paid {money(paidOf(c))} of {money(t.total)}
+                </div>
+              )}
+            </div>
+            <div className="row-right">
+              <b>{money(t.retainer)}</b>
+              <span className="quiet">{fmtDate(c.eventDate)}</span>
+            </div>
+            <button
+              className="paybtn"
+              onClick={() => setOpenPay(openPay === c.id ? null : c.id)}
+            >
+              {openPay === c.id ? "Close" : "Payments"}
+            </button>
+            <PayBtn id={c.id} stage={3} label="Retainer received" pending={pending} setPending={setPending} patch={patch} />
           </div>
-          <div className="row-right">
-            <b>{money(t.retainer)}</b>
-            <span className="quiet">{fmtDate(c.eventDate)}</span>
-          </div>
-          <PayBtn id={c.id} stage={3} label="Retainer received" pending={pending} setPending={setPending} patch={patch} />
+          {openPay === c.id && (
+            <PaymentLog c={c} total={t.total} retainer={t.retainer} patch={patch} />
+          )}
         </div>
       ))}
 
