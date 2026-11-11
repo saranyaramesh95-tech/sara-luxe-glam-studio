@@ -35,6 +35,16 @@ const DEFAULT_RATES = [
   { id: "d2", name: "Saree draping (incl. ironing)", price: 75 },
 ];
 
+/* Services added to the price list after launch. The saved list lives in the
+   cloud and can't be edited from here, so on load each of these is added
+   ONCE if it's missing (ids recorded in settings.addedServiceIds, so a
+   service she later deletes or renames is never put back). */
+const NEW_SERVICES = [
+  { id: "g1", name: "Groom makeup", price: 70 },
+  { id: "g2", name: "Groom hair", price: 70 },
+  { id: "a1", name: "Luxury skin prep (add-on)", price: 50 },
+];
+
 /* Two live threads, seeded so the pipeline isn't empty on day one.
    Rename them once you've got the names in front of you. */
 const SEED_CLIENTS = [
@@ -732,8 +742,21 @@ function SaraLuxeGlamStudio() {
          at "Retainer paid" or beyond from before that feature existed, so it
          stops moving once she adds services later. Uses the freshly-loaded
          rates/settings, not component state, since those haven't applied yet. */
-      const rSvc = r.services || DEFAULT_RATES;
+      let rSvc = r.services || DEFAULT_RATES;
       const rSet = { ...DEFAULT_SETTINGS, ...(r.settings || {}) };
+      const handled = Array.isArray(rSet.addedServiceIds) ? rSet.addedServiceIds : [];
+      const pending = NEW_SERVICES.filter((n) => !handled.includes(n.id));
+      if (pending.length) {
+        const have = (n) =>
+          rSvc.some(
+            (x) =>
+              x.id === n.id ||
+              String(x.name || "").toLowerCase().includes(n.name.toLowerCase().split(" (")[0])
+          );
+        rSvc = [...rSvc, ...pending.filter((n) => !have(n))];
+        rSet.addedServiceIds = [...handled, ...pending.map((n) => n.id)];
+        save(KEYS.rates, { services: rSvc, settings: rSet });
+      }
       const sumFor = (cl) => {
         const agreed = Number(cl.agreedTotal) || 0;
         if (agreed > 0) return agreed;
