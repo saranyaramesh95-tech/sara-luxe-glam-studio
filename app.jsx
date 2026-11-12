@@ -3021,23 +3021,44 @@ function PayBtn({ id, stage, label, pending, setPending, patch }) {
   );
 }
 
+/* Paid so far for a client = the payments she has logged PLUS what the
+   pipeline stage already says was received, so the two can't disagree:
+   - "Retainer paid" (or later) counts the retainer as received, unless a
+     logged payment was already marked as the retainer or she turned the
+     automatic credit off for this client;
+   - "Balance paid" (or later) means everything is received. */
+function paymentSummary(c, total, retainer) {
+  const logged = (c.payments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const retainerLogged = (c.payments || []).some((x) => x.kind === "retainer");
+  const retainerCredit =
+    c.stage >= 3 && !c.skipRetainerCredit && !retainerLogged ? Number(retainer) || 0 : 0;
+  const balanceCredit =
+    c.stage >= 4 ? Math.max(0, total - logged - retainerCredit) : 0;
+  const paid = logged + retainerCredit + balanceCredit;
+  return { logged, retainerCredit, balanceCredit, paid, left: total - paid };
+}
+
 /* Payments often arrive in pieces. This logs each one against the client
    and shows paid so far and what's left of her total. */
 function PaymentLog({ c, total, retainer, patch }) {
   const payments = c.payments || [];
-  const paid = payments.reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const left = total - paid;
+  const { retainerCredit, balanceCredit, paid, left } = paymentSummary(c, total, retainer);
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(isoOf(new Date()));
   const [note, setNote] = useState("");
+  const [asRetainer, setAsRetainer] = useState(false);
 
   const write = (next) => patch(c.id, { payments: next });
   const add = () => {
     const a = Number(amount);
     if (!a) return;
-    write([...payments, { id: "p" + Date.now(), date, amount: a, note: note.trim() }]);
+    write([
+      ...payments,
+      { id: "p" + Date.now(), date, amount: a, note: note.trim(), ...(asRetainer ? { kind: "retainer" } : {}) },
+    ]);
     setAmount("");
     setNote("");
+    setAsRetainer(false);
   };
   const edit = (id, p) => write(payments.map((x) => (x.id === id ? { ...x, ...p } : x)));
 
@@ -3066,6 +3087,32 @@ function PaymentLog({ c, total, retainer, patch }) {
         </div>
       )}
 
+      {(retainerCredit > 0 || (c.stage >= 3 && c.skipRetainerCredit)) && (
+        <div className="row">
+          <div className="row-main">
+            <b>{c.skipRetainerCredit ? "Retainer — not counted" : money(retainerCredit)}</b>
+            <div className="quiet">
+              {c.skipRetainerCredit
+                ? "You turned off counting the retainer for her."
+                : "Retainer — counted because she's marked Retainer paid"}
+            </div>
+          </div>
+          <button
+            className="paybtn"
+            onClick={() => patch(c.id, { skipRetainerCredit: !c.skipRetainerCredit })}
+          >
+            {c.skipRetainerCredit ? "Count it" : "Don't count"}
+          </button>
+        </div>
+      )}
+      {balanceCredit > 0 && (
+        <div className="row">
+          <div className="row-main">
+            <b>{money(balanceCredit)}</b>
+            <div className="quiet">Balance — counted because she's marked Balance paid</div>
+          </div>
+        </div>
+      )}
       {payments.length > 0 && (
         <div style={{ marginTop: 8 }}>
           {[...payments]
@@ -3082,6 +3129,7 @@ function PaymentLog({ c, total, retainer, patch }) {
                   </b>
                   <div className="quiet">
                     {fmtDate(x.date)}
+                    {x.kind === "retainer" ? " · retainer" : ""}
                     {x.note ? ` · ${x.note}` : ""}
                   </div>
                 </div>
@@ -3118,8 +3166,14 @@ function PaymentLog({ c, total, retainer, patch }) {
         </Field>
       </div>
       <div className="card-actions">
-        {retainer > 0 && paid === 0 && (
-          <button className="slg-btn ghost" onClick={() => setAmount(String(retainer))}>
+        {retainer > 0 && c.stage < 3 && !payments.some((x) => x.kind === "retainer") && (
+          <button
+            className="slg-btn ghost"
+            onClick={() => {
+              setAmount(String(retainer));
+              setAsRetainer(true);
+            }}
+          >
             Retainer {money(retainer)}
           </button>
         )}
@@ -3142,8 +3196,8 @@ function Payments({ clients, totals, settings, patch }) {
 
   /* what's still owed: counts down from what she has actually logged, and
      falls back to the old "total minus retainer" when nothing is logged */
-  const paidOf = (c) => (c.payments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const owedOf = (c, t) => ((c.payments || []).length ? Math.max(0, t.total - paidOf(c)) : t.balance);
+  const paidOf = (c, t) => paymentSummary(c, t.total, t.retainer).paid;
+  const owedOf = (c, t) => Math.max(0, t.total - paidOf(c, t));
 
   const rows = clients
     .map((c) => ({ c, t: totals(c) }))
@@ -3174,7 +3228,7 @@ function Payments({ clients, totals, settings, patch }) {
       )}
       {awaitingBalance.map(({ c, t }) => {
         const d = daysUntil(t.balanceDue);
-        const logged = (c.payments || []).length > 0;
+        const logged = (c.payments || []).length > 0 || paidOf(c, t) > 0;
         const owed = owedOf(c, t);
         return (
           <div key={c.id}>
@@ -3184,7 +3238,7 @@ function Payments({ clients, totals, settings, patch }) {
                 <span className="quiet"> · {fmtDate(c.eventDate)}</span>
                 {logged && (
                   <div className="quiet">
-                    paid {money(paidOf(c))} of {money(t.total)}
+                    paid {money(paidOf(c, t))} of {money(t.total)}
                   </div>
                 )}
               </div>
@@ -3222,7 +3276,7 @@ function Payments({ clients, totals, settings, patch }) {
               <span className="quiet"> · {STAGES[c.stage]}</span>
               {(c.payments || []).length > 0 && (
                 <div className="quiet">
-                  paid {money(paidOf(c))} of {money(t.total)}
+                  paid {money(paidOf(c, t))} of {money(t.total)}
                 </div>
               )}
             </div>
