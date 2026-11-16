@@ -658,6 +658,9 @@ function SaraLuxeGlamStudio() {
   const [openId, setOpenId] = useState(null);
   const [adding, setAdding] = useState(false);
   const [msgClient, setMsgClient] = useState("");
+  /* unsaved edits on the Rates tab — held up here so switching tabs
+     doesn't throw them away; nothing is written until she taps Save */
+  const [ratesDraft, setRatesDraft] = useState(null);
   const [gigs, setGigs] = useState([]);
   const [biz, setBiz] = useState(DEFAULT_BIZ);
   const [loadError, setLoadError] = useState(false);
@@ -1186,6 +1189,7 @@ function SaraLuxeGlamStudio() {
             onClick={() => setTab(k)}
           >
             {label}
+            {k === "rates" && ratesDraft ? " •" : ""}
           </button>
         ))}
       </nav>
@@ -1255,6 +1259,8 @@ function SaraLuxeGlamStudio() {
               rates={rates}
               settings={settings}
               writeRates={writeRates}
+              draft={ratesDraft}
+              setDraft={setRatesDraft}
             />
             <Backup
               clients={clients}
@@ -1265,6 +1271,7 @@ function SaraLuxeGlamStudio() {
               biz={biz}
               restore={(d) => {
                 try { localStorage.removeItem("slg:lastGood"); } catch (e) {}
+                setRatesDraft(null);
                 setCloudAlert(null);
                 if (Array.isArray(d.clients)) writeClients(d.clients, { force: true });
                 if (Array.isArray(d.gigs)) writeGigs(d.gigs);
@@ -2508,6 +2515,12 @@ function AddForm({ onAdd }) {
 /* Shared by the "Add other artist booking" form and by editing an
    existing one — same fields either way, just pointed at a different
    `set`. */
+/* A date another artist/studio has only pencilled in (e.g. a Bonita Brides
+   "Hold") isn't a booking yet. Older entries without a status are read as a
+   hold when their note says "hold". */
+const isGigHold = (g) =>
+  g.status ? g.status === "hold" : /\bhold\b/i.test(`${g.note || ""} ${g.notes || ""}`);
+
 function GigFields({ g, set, showPayout }) {
   const payout =
     (Number(g.makeupQty) || 0) * (Number(g.makeupRate) || 0) +
@@ -2555,6 +2568,14 @@ function GigFields({ g, set, showPayout }) {
             </a>
           )}
         </Field>
+      </div>
+
+      <div className="card-actions" style={{ marginTop: 4 }}>
+        <Toggle
+          on={isGigHold(g)}
+          onClick={() => set("status", isGigHold(g) ? "confirmed" : "hold")}
+          label="Just a hold — not confirmed yet"
+        />
       </div>
 
       <div className="sub">What you did, and what it paid</div>
@@ -2653,7 +2674,9 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
             .join(" · "),
           confirmed: c.stage >= 3,
           stage: STAGES[c.stage],
-          money: totals(c).total,
+          // the whole booking's total sits on day 1 only — repeating it on
+          // every day row made a $3,500 two-day booking look like $7,000
+          money: i === 0 ? totals(c).total : 0,
           own: true,
           primary: i === 0,
         }));
@@ -2667,7 +2690,8 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
       name: x.artist,
       sub: [gigServices(x), x.note].filter(Boolean).join(" · "),
       location: x.location || "",
-      confirmed: true,
+      confirmed: !isGigHold(x),
+      hold: isGigHold(x),
       own: false,
       pay: gigPayout(x),
     }));
@@ -2686,7 +2710,9 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
   const ownRevenue = mine
     .filter((x) => x.confirmed && x.primary)
     .reduce((s, x) => s + x.money, 0);
-  const theirsRevenue = theirs.reduce((s, x) => s + x.pay, 0);
+  const theirsRevenue = theirs
+    .filter((x) => x.confirmed)
+    .reduce((s, x) => s + x.pay, 0);
   const totalRevenue = ownRevenue + theirsRevenue;
 
   const addGig = () => {
@@ -2729,7 +2755,7 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
           <b>{confirmed}</b>
           <span>
             confirmed booking{confirmed === 1 ? "" : "s"}
-            {pending ? ` · ${pending} not yet` : ""}
+            {pending ? ` · ${pending} not yet (holds & unpaid retainers)` : ""}
           </span>
         </div>
         <div className="stat">
@@ -2818,8 +2844,10 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
                   </>
                 ) : (
                   <>
-                    {x.pay > 0 && <b>{money(x.pay)}</b>}
-                    <span className="chip">other artist</span>
+                    {x.pay > 0 && <b className={x.hold ? "quiet" : ""}>{money(x.pay)}</b>}
+                    <span className={x.hold ? "chip alert" : "chip"}>
+                      {x.hold ? "hold · other artist" : "other artist"}
+                    </span>
                   </>
                 )}
               </div>
@@ -2860,6 +2888,22 @@ function Bookings({ clients, gigs, writeGigs, totals }) {
 
 /* ---------------- messages ---------------- */
 
+/* Which pipeline stages each built-in message is written for (by STAGES
+   index), and which one to open first for a client at each stage. Keyed by
+   template id, so it still applies to wording she has edited. */
+const TEMPLATE_STAGES = {
+  t1: [0], t1b: [0], t2: [0], t2b: [0, 1], t2c: [1],
+  t3: [1, 2], t4: [2, 3], t5: [1], t6: [1], t7: [3], t8: [3, 4],
+};
+const STAGE_DEFAULT_TEMPLATE = { 0: "t1", 1: "t5", 2: "t3", 3: "t7", 4: "t8" };
+
+/* What each built-in message asks her for — so the app can warn before
+   asking a client something she already told you. */
+const TEMPLATE_ASKS = {
+  t1: ["occasion", "people"],
+  t2b: ["location", "time"],
+};
+
 function Messages({
   templates, writeTemplates, clients, msgClient, setMsgClient,
   totals, serviceLines, settings, trialOpen,
@@ -2873,7 +2917,35 @@ function Messages({
   const shown = templates.filter((t) =>
     mode === "vendor" ? t.kind === "vendor" : t.kind !== "vendor"
   );
-  const tpl = shown.find((t) => t.id === sel) || shown[0];
+  const stageFit = (t) =>
+    !c || !TEMPLATE_STAGES[t.id] || TEMPLATE_STAGES[t.id].includes(c.stage);
+  const firstFor = () => {
+    if (!c) return shown[0];
+    // a brand-new enquiry that already has services picked gets "full brief"
+    const want =
+      c.stage === 0 && Object.values(c.services || {}).some(Boolean)
+        ? "t2"
+        : STAGE_DEFAULT_TEMPLATE[c.stage];
+    return shown.find((t) => t.id === want) || shown.find(stageFit) || shown[0];
+  };
+  const tpl = shown.find((t) => t.id === sel) || firstFor();
+
+  /* what she has already told you, so a message doesn't ask for it again */
+  const peopleCount = c
+    ? Object.values(c.services || {}).reduce((n, q) => n + (Number(q) || 0), 0)
+    : 0;
+  const known = c
+    ? {
+        occasion: c.occasion ? `occasion (${c.occasion})` : null,
+        people: peopleCount > 0 ? "what she's booking" : null,
+        location: c.location ? `where she's getting ready (${c.location})` : null,
+        time: c.readyTime ? `ready time (${c.readyTime})` : null,
+      }
+    : {};
+  const alreadyGave = tpl && c
+    ? (TEMPLATE_ASKS[tpl.id] || []).map((k) => known[k]).filter(Boolean)
+    : [];
+  const [draftBody, setDraftBody] = useState("");
 
   const fill = (body) => {
     if (mode === "vendor") return body;
@@ -2894,9 +2966,12 @@ function Messages({
       "{month}": monthName(),
       "{trialsLeft}":
         trialOpen === 1 ? "one spot" : trialOpen > 1 ? `${trialOpen} spots` : "no spots left",
+      // her real quote once she has one; the generic ballpark only before that
       "{ballpark}":
-        (c.type === "Bridal" ? settings.ballparkBridal : settings.ballparkEvent) ||
-        "—set this in Rates—",
+        t.total > 0
+          ? money(t.total)
+          : (c.type === "Bridal" ? settings.ballparkBridal : settings.ballparkEvent) ||
+            "—set this in Rates—",
     };
     return Object.entries(map).reduce(
       (s, [k, v]) => s.split(k).join(v),
@@ -2946,7 +3021,9 @@ function Messages({
         {shown.map((t) => (
           <button
             key={t.id}
-            className={t.id === sel ? "tpl on" : "tpl"}
+            className={t.id === tpl?.id ? "tpl on" : "tpl"}
+            style={stageFit(t) ? undefined : { opacity: 0.45 }}
+            title={stageFit(t) ? undefined : `Not written for ${STAGES[c.stage]}`}
             onClick={() => { setSel(t.id); setEditing(false); }}
           >
             {t.name}
@@ -2957,17 +3034,24 @@ function Messages({
       {tpl && (
         <div className="tpl-panel">
           <div className="tpl-when">{tpl.when}</div>
+          {c && !stageFit(tpl) && (
+            <div className="hint" style={{ color: "var(--kum)" }}>
+              Careful — this one is written for{" "}
+              {TEMPLATE_STAGES[tpl.id].map((i) => STAGES[i]).join(" / ")}, and{" "}
+              {c.name} is at {STAGES[c.stage]}.
+            </div>
+          )}
+          {alreadyGave.length > 0 && (
+            <div className="hint" style={{ color: "var(--kum)" }}>
+              She already told you: {alreadyGave.join(", ")}. Take that question
+              out before sending.
+            </div>
+          )}
           {editing ? (
             <textarea
               rows={12}
-              value={tpl.body}
-              onChange={(e) =>
-                writeTemplates(
-                  templates.map((t) =>
-                    t.id === tpl.id ? { ...t, body: e.target.value } : t
-                  )
-                )
-              }
+              value={draftBody}
+              onChange={(e) => setDraftBody(e.target.value)}
             />
           ) : (
             <pre className="tpl-body">{text}</pre>
@@ -2976,9 +3060,37 @@ function Messages({
             <button className="slg-btn" onClick={copy} disabled={editing}>
               {copied ? "Copied" : "Copy message"}
             </button>
-            <button className="slg-btn ghost" onClick={() => setEditing(!editing)}>
-              {editing ? "Done editing" : "Edit wording"}
-            </button>
+            {editing ? (
+              <>
+                <button
+                  className="slg-btn"
+                  disabled={draftBody === tpl.body}
+                  onClick={() => {
+                    writeTemplates(
+                      templates.map((t) =>
+                        t.id === tpl.id ? { ...t, body: draftBody } : t
+                      )
+                    );
+                    setEditing(false);
+                  }}
+                >
+                  Save wording
+                </button>
+                <button className="slg-btn ghost" onClick={() => setEditing(false)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                className="slg-btn ghost"
+                onClick={() => {
+                  setDraftBody(tpl.body);
+                  setEditing(true);
+                }}
+              >
+                Edit wording
+              </button>
+            )}
           </div>
           {editing && (
             <div className="hint">
@@ -3026,16 +3138,65 @@ function PayBtn({ id, stage, label, pending, setPending, patch }) {
    - "Retainer paid" (or later) counts the retainer as received, unless a
      logged payment was already marked as the retainer or she turned the
      automatic credit off for this client;
-   - "Balance paid" (or later) means everything is received. */
+   - "Balance paid" (or later) means everything is received.
+   Logged payments count toward the retainer first: if she logged $3,500
+   against a $1,050 retainer, the retainer is already inside that $3,500,
+   so it is NOT added again on top (that used to inflate "paid so far"). */
 function paymentSummary(c, total, retainer) {
   const logged = (c.payments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const retainerLogged = (c.payments || []).some((x) => x.kind === "retainer");
   const retainerCredit =
-    c.stage >= 3 && !c.skipRetainerCredit && !retainerLogged ? Number(retainer) || 0 : 0;
+    c.stage >= 3 && !c.skipRetainerCredit && !retainerLogged
+      ? Math.max(0, (Number(retainer) || 0) - logged)
+      : 0;
   const balanceCredit =
     c.stage >= 4 ? Math.max(0, total - logged - retainerCredit) : 0;
   const paid = logged + retainerCredit + balanceCredit;
   return { logged, retainerCredit, balanceCredit, paid, left: total - paid };
+}
+
+/* Every dollar that actually reached her from one client, each dated to
+   the month it arrived — the single source for "Money in" on Business, so
+   it always matches the Payments tab:
+   - each logged payment, on its own date;
+   - a retainer she marked paid but never logged, in the month she marked it;
+   - a balance she marked paid but never logged, in the month she marked it. */
+function cashEntries(c, total, retainer) {
+  const s = paymentSummary(c, total, retainer);
+  const out = (c.payments || [])
+    .filter((p) => Number(p.amount))
+    .map((p) => ({
+      key: c.id + ":" + p.id,
+      name: c.name,
+      date: p.date || "",
+      month: (p.date || "").slice(0, 7),
+      amount: Number(p.amount) || 0,
+      kind: p.kind === "retainer" ? "retainer" : "payment",
+      note: p.note || "",
+    }));
+  const retMonth = c.retainerMonth || (c.eventDate || "").slice(0, 7);
+  if (s.retainerCredit > 0 && retMonth)
+    out.push({
+      key: c.id + ":ret",
+      name: c.name,
+      date: "",
+      month: retMonth,
+      amount: s.retainerCredit,
+      kind: "retainer",
+      note: "marked Retainer paid (not logged)",
+    });
+  const balMonth = c.balanceMonth || (c.eventDate || "").slice(0, 7);
+  if (s.balanceCredit > 0 && balMonth)
+    out.push({
+      key: c.id + ":bal",
+      name: c.name,
+      date: "",
+      month: balMonth,
+      amount: s.balanceCredit,
+      kind: "payment",
+      note: "marked Balance paid (not logged)",
+    });
+  return out;
 }
 
 /* Payments often arrive in pieces. This logs each one against the client
@@ -3205,7 +3366,11 @@ function Payments({ clients, totals, settings, patch }) {
     .sort((a, b) => (a.c.eventDate < b.c.eventDate ? -1 : 1));
 
   const awaitingRetainer = rows.filter(({ c }) => c.stage < 3);
-  const awaitingBalance = rows.filter(({ c }) => c.stage === 3);
+  // "Retainer paid" but her logged payments already cover the total —
+  // nothing is coming due, she just hasn't been moved to Balance paid yet.
+  const isPaidUp = ({ c, t }) => t.total > 0 && owedOf(c, t) === 0;
+  const awaitingBalance = rows.filter((r) => r.c.stage === 3 && !isPaidUp(r));
+  const paidUp = rows.filter((r) => r.c.stage === 3 && isPaidUp(r));
 
   const sum = (arr, k) => arr.reduce((s, r) => s + r.t[k], 0);
 
@@ -3246,7 +3411,13 @@ function Payments({ clients, totals, settings, patch }) {
                 <b>{logged && owed === 0 ? "Paid in full ✓" : money(owed)}</b>
                 <span className="quiet">
                   {logged && owed > 0 ? "left · " : ""}due {fmtDate(t.balanceDue)}
-                  {d !== null && d <= 7 ? ` · ${d}d` : ""}
+                  {d !== null && d < 0
+                    ? ` · ${-d}d overdue`
+                    : d === 0
+                    ? " · today"
+                    : d !== null && d <= 7
+                    ? ` · in ${d}d`
+                    : ""}
                 </span>
               </div>
               <button
@@ -3263,6 +3434,38 @@ function Payments({ clients, totals, settings, patch }) {
           </div>
         );
       })}
+
+      {paidUp.length > 0 && (
+        <>
+          <div className="sub">Paid in full — just needs moving to Balance paid</div>
+          {paidUp.map(({ c, t }) => (
+            <div key={c.id}>
+              <div className="row">
+                <div className="row-main">
+                  <b>{c.name}</b>
+                  <span className="quiet"> · {fmtDate(c.eventDate)}</span>
+                  <div className="quiet">
+                    paid {money(paidOf(c, t))} of {money(t.total)}
+                  </div>
+                </div>
+                <div className="row-right">
+                  <b>Paid in full ✓</b>
+                </div>
+                <button
+                  className="paybtn"
+                  onClick={() => setOpenPay(openPay === c.id ? null : c.id)}
+                >
+                  {openPay === c.id ? "Close" : "Payments"}
+                </button>
+                <PayBtn id={c.id} stage={4} label="Mark Balance paid" pending={pending} setPending={setPending} patch={patch} />
+              </div>
+              {openPay === c.id && (
+                <PaymentLog c={c} total={t.total} retainer={t.retainer} patch={patch} />
+              )}
+            </div>
+          ))}
+        </>
+      )}
 
       <div className="sub">Waiting on a retainer</div>
       {awaitingRetainer.length === 0 && (
@@ -3987,6 +4190,37 @@ function MyGoals({ period, goals, write, placeholder, slots }) {
   );
 }
 
+/* "Money in" broken down payment by payment, so every dollar in the
+   total can be traced back to a client and a date. */
+function MoneyInList({ entries, label }) {
+  const [open, setOpen] = useState(false);
+  if (!entries.length) return null;
+  const sorted = [...entries].sort((a, b) => (a.date || "9") < (b.date || "9") ? -1 : 1);
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button className="linkbtn" style={{ fontSize: 12 }} onClick={() => setOpen(!open)}>
+        {open ? "Hide" : "Show"} what's in {label}'s money in ({entries.length})
+      </button>
+      {open &&
+        sorted.map((x) => (
+          <div key={x.key} className="row">
+            <div className="row-main">
+              <b>{x.name}</b>
+              <div className="quiet">
+                {x.date ? fmtDate(x.date) : "no date"}
+                {x.kind === "retainer" ? " · retainer" : ""}
+                {x.note ? ` · ${x.note}` : ""}
+              </div>
+            </div>
+            <div className="row-right">
+              <b>{money(x.amount)}</b>
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function Business({ biz, writeBiz, clients, gigs, totals }) {
   const [view, setView] = useState("goals");
   const [sp, setSp] = useState({
@@ -4034,7 +4268,7 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
       (c) => c.stage >= 3 && (c.eventDate || "").slice(0, 7) === mk
     ).length;
     const forOthers = (gigs || []).filter(
-      (g) => (g.date || "").slice(0, 7) === mk
+      (g) => (g.date || "").slice(0, 7) === mk && !isGigHold(g)
     ).length;
     return { mine, forOthers, all: mine + forOthers };
   };
@@ -4053,12 +4287,22 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
     return sum;
   };
 
+  /* real cash, itemised — see cashEntries */
+  const cash = clients.flatMap((c) => {
+    const t = totals(c);
+    return cashEntries(c, t.total, t.retainer);
+  });
+  const cashFor = (mk) => cash.filter((x) => x.month === mk);
+
   const snap = (mk) => {
     const won = wonIn(mk);
-    const ret = won.reduce((s, c) => s + totals(c).retainer, 0);
-    const bal = clients
-      .filter((c) => c.stage >= 4 && c.balanceMonth === mk)
-      .reduce((s, c) => s + totals(c).balance, 0);
+    const entries = cashFor(mk);
+    const ret = entries
+      .filter((x) => x.kind === "retainer")
+      .reduce((s, x) => s + x.amount, 0);
+    const bal = entries
+      .filter((x) => x.kind !== "retainer")
+      .reduce((s, x) => s + x.amount, 0);
     const ev = eventsIn(mk);
     return {
       inq: askedIn(mk).length,
@@ -4420,9 +4664,10 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
               now={M.rev}
               was={P.rev}
               isMoney
-              note={`${money(M.ret)} retainers · ${money(M.bal)} balances`}
+              note={`${money(M.ret)} retainers · ${money(M.bal)} other payments`}
             />
           </div>
+          <MoneyInList entries={cashFor(viewMonth)} label={labelMonth(viewMonth)} />
 
           <div className="hint">
             Enquiries count when they arrived, bookings when the retainer landed,
@@ -4535,6 +4780,7 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
               <b>–{money(spendSum(monthSpend))}</b>
             </div>
           </div>
+          <MoneyInList entries={cashFor(viewMonth)} label={labelMonth(viewMonth)} />
 
           {byKind.length > 0 && (
             <>
@@ -5297,24 +5543,79 @@ function Backup({ clients, gigs, rates, settings, templates, biz, restore }) {
 
 /* ---------------- rates ---------------- */
 
-function Rates({ rates, settings, writeRates }) {
+function Rates({ rates, settings, writeRates, draft, setDraft }) {
+  /* Edits go into a draft first; nothing touches saved prices (or any
+     client's quote) until she taps Save. */
+  const cur = draft || { rates, settings };
+  const dirty = !!draft;
+  const upd = (r, st) => setDraft({ rates: r, settings: st });
   const setPrice = (id, price) =>
-    writeRates(
-      rates.map((r) => (r.id === id ? { ...r, price: Number(price) || 0 } : r)),
-      settings
+    upd(
+      cur.rates.map((r) => (r.id === id ? { ...r, price: Number(price) || 0 } : r)),
+      cur.settings
     );
   const setName = (id, name) =>
-    writeRates(rates.map((r) => (r.id === id ? { ...r, name } : r)), settings);
-  const setS = (k, v) => writeRates(rates, { ...settings, [k]: v });
+    upd(cur.rates.map((r) => (r.id === id ? { ...r, name } : r)), cur.settings);
+  const setS = (k, v) => upd(cur.rates, { ...cur.settings, [k]: v });
+  const removeService = (r) => {
+    if (
+      !window.confirm(
+        `Delete "${r.name}" from your services?\n\nAny client who has it on her quote will lose that line from her total. (You can still Discard before saving.)`
+      )
+    )
+      return;
+    upd(cur.rates.filter((x) => x.id !== r.id), cur.settings);
+  };
+  const saveAll = () => {
+    writeRates(draft.rates, draft.settings);
+    setDraft(null);
+  };
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const rates_ = cur.rates;
+  const settings_ = cur.settings;
+
+  const saveBar = (
+    <div
+      className="card-actions"
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 5,
+        background: "var(--ground)",
+        padding: "8px 0",
+      }}
+    >
+      <button className="slg-btn" disabled={!dirty} onClick={saveAll}>
+        {dirty ? "Save changes" : "Saved"}
+      </button>
+      {dirty && (
+        <button className="slg-btn ghost" onClick={() => setDraft(null)}>
+          Discard
+        </button>
+      )}
+      {dirty && <span className="quiet" style={{ fontSize: 12 }}>Unsaved changes</span>}
+    </div>
+  );
 
   return (
     <>
+      {saveBar}
       <div className="sub">Your services</div>
       <div className="hint">
         Set these once. Every quote, retainer, and balance in the app comes from
-        these numbers.
+        these numbers. Changes only take effect when you tap Save.
       </div>
-      {rates.map((r) => (
+      {rates_.map((r) => (
         <div key={r.id} className="rate-row">
           <input value={r.name} onChange={(e) => setName(r.id, e.target.value)} />
           <div className="price-in">
@@ -5327,7 +5628,8 @@ function Rates({ rates, settings, writeRates }) {
           </div>
           <button
             className="slg-btn ghost tiny"
-            onClick={() => writeRates(rates.filter((x) => x.id !== r.id), settings)}
+            title="Delete this service"
+            onClick={() => removeService(r)}
           >
             ×
           </button>
@@ -5336,7 +5638,7 @@ function Rates({ rates, settings, writeRates }) {
       <button
         className="slg-btn ghost"
         onClick={() =>
-          writeRates([...rates, { id: "s" + Date.now(), name: "New service", price: 0 }], settings)
+          upd([...rates_, { id: "s" + Date.now(), name: "New service", price: 0 }], settings_)
         }
       >
         Add a service
@@ -5345,42 +5647,43 @@ function Rates({ rates, settings, writeRates }) {
       <div className="sub">Terms</div>
       <div className="grid2">
         <Field label="Retainer %">
-          <input type="number" value={settings.retainerPct}
+          <input type="number" value={settings_.retainerPct}
             onChange={(e) => setS("retainerPct", Number(e.target.value) || 0)} />
         </Field>
         <Field label="Balance due (days before)">
-          <input type="number" value={settings.balanceLeadDays}
+          <input type="number" value={settings_.balanceLeadDays}
             onChange={(e) => setS("balanceLeadDays", Number(e.target.value) || 0)} />
         </Field>
         <Field label="Travel radius (miles)">
-          <input type="number" value={settings.travelRadius}
+          <input type="number" value={settings_.travelRadius}
             onChange={(e) => setS("travelRadius", Number(e.target.value) || 0)} />
         </Field>
         <Field label="Flat travel fee beyond that">
-          <input type="number" value={settings.travelFee}
+          <input type="number" value={settings_.travelFee}
             onChange={(e) => setS("travelFee", Number(e.target.value) || 0)} />
         </Field>
         <Field label="Second artist travel">
-          <input type="number" value={settings.secondArtistTravel}
+          <input type="number" value={settings_.secondArtistTravel}
             onChange={(e) => setS("secondArtistTravel", Number(e.target.value) || 0)} />
         </Field>
         <Field label="Minimum booking (on-location)">
-          <input type="number" value={settings.minimumBooking}
+          <input type="number" value={settings_.minimumBooking}
             onChange={(e) => setS("minimumBooking", Number(e.target.value) || 0)} />
         </Field>
       </div>
 
       <div className="sub">Ballpark you quote first</div>
       <div className="hint">
-        This is what drops into {"{ballpark}"} in your first reply.
+        This is what drops into {"{ballpark}"} in your first reply — only
+        until she has services on her card. After that her own quote is used.
       </div>
       <div className="grid2">
         <Field label="Bridal">
-          <input value={settings.ballparkBridal} placeholder="$450"
+          <input value={settings_.ballparkBridal} placeholder="$450"
             onChange={(e) => setS("ballparkBridal", e.target.value)} />
         </Field>
         <Field label="Special event">
-          <input value={settings.ballparkEvent} placeholder="$180"
+          <input value={settings_.ballparkEvent} placeholder="$180"
             onChange={(e) => setS("ballparkEvent", e.target.value)} />
         </Field>
       </div>
