@@ -4314,6 +4314,14 @@ function Business({ biz, writeBiz, clients: allClients, gigs, totals }) {
       (c) => isBooked(c) && isBridal(c) && (c.eventDate || "").slice(0, 7) === mk
     );
 
+  /* her own clients with an event this month that the counts leave out */
+  const notCountedIn = (mk) =>
+    clients.filter(
+      (c) =>
+        !isBooked(c) &&
+        [c.eventDate, ...(c.extraDates || [])].some((d) => (d || "").slice(0, 7) === mk)
+    );
+
   /* every event you were physically at, yours and other artists' */
   const eventsIn = (mk) => {
     const mine = clients.filter(
@@ -4733,6 +4741,25 @@ function Business({ biz, writeBiz, clients: allClients, gigs, totals }) {
             detail={(c) => `event ${fmtDate(c.eventDate) || "no date"} · ${STAGES[c.stage]}`} />
           <WhoList title="weddings" people={weddingsIn(viewMonth)} label={labelMonth(viewMonth)}
             detail={(c) => `${fmtDate(c.eventDate)} · ${STAGES[c.stage]}`} />
+          {notCountedIn(viewMonth).length > 0 && (
+            <div className="hint" style={{ marginTop: 8 }}>
+              <b>Event this month but not counted:</b>
+              {notCountedIn(viewMonth).map((c) => (
+                <div key={c.id} style={{ marginTop: 4 }}>
+                  {c.name} · {fmtDate(c.eventDate)} · {isBridal(c) ? "Bridal" : c.type} —{" "}
+                  {c.archived === "lost"
+                    ? "she's marked lost."
+                    : `still at "${STAGES[c.stage]}" with no payment logged. Move her card to Retainer paid (or log her payment) and she counts.`}
+                </div>
+              ))}
+            </div>
+          )}
+          {M.evOthers > 0 && (
+            <div className="hint" style={{ marginTop: 6 }}>
+              {M.evOthers} booking{M.evOthers === 1 ? "" : "s"} you did for other artists
+              this month count under Events attended, not My weddings.
+            </div>
+          )}
 
           <div className="hint">
             Enquiries count when they arrived, bookings when her first payment landed,
