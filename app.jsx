@@ -509,6 +509,38 @@ const VENDOR_KINDS = [
 
 const CLIENT_TYPES = ["Bridal", "Special event", "Class", "Shoot"];
 
+/* A card with no type saved shows as "Bridal" in her details dropdown, so
+   it has to count as Bridal everywhere else too. */
+const isBridal = (c) => (c.type || "Bridal") === "Bridal";
+
+/* She's really booked once the retainer is in — either the card says
+   "Retainer paid" or later, or she logged a payment against it (logging
+   the retainer under Payments doesn't move the card on its own). A client
+   marked lost/cancelled never counts. */
+const isBooked = (c) =>
+  c.archived !== "lost" &&
+  (c.stage >= 3 || (c.payments || []).some((p) => Number(p.amount) > 0));
+
+/* The month she actually booked: when her first payment landed. Only if
+   nothing is logged, the month the card was moved to "Retainer paid"
+   (which is just the day the button was tapped — so cards caught up in
+   bulk would otherwise all land in one month). */
+const bookedMonthOf = (c) => {
+  if (!isBooked(c)) return "";
+  const dates = (c.payments || [])
+    .filter((p) => Number(p.amount) > 0 && p.date)
+    .map((p) => p.date)
+    .sort();
+  return dates.length ? dates[0].slice(0, 7) : c.retainerMonth || "";
+};
+
+/* when the enquiry landed — never guessed from the event date */
+const enquiryMonthOf = (c) => {
+  if (c.inquiryDate) return c.inquiryDate.slice(0, 7);
+  const stamp = Number(String(c.id || "").replace(/^c/, ""));
+  return stamp > 1000000000000 ? isoOf(new Date(stamp)).slice(0, 7) : "";
+};
+
 const LOST_REASONS = [
   "Date already booked",
   "Price",
@@ -1003,7 +1035,7 @@ function SaraLuxeGlamStudio() {
   /* ---- trial slots ---- */
   const thisMonth = monthKey();
   const trialTaken = clients.filter(
-    (c) => c.type === "Bridal" && c.retainerMonth === thisMonth
+    (c) => isBridal(c) && c.retainerMonth === thisMonth
   ).length;
   const trialOpen = Math.max(0, 2 - trialTaken);
 
@@ -4190,6 +4222,28 @@ function MyGoals({ period, goals, write, placeholder, slots }) {
   );
 }
 
+/* The clients behind one of the counts, so every number can be checked. */
+function WhoList({ title, people, label, detail }) {
+  const [open, setOpen] = useState(false);
+  if (!people.length) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button className="linkbtn" style={{ fontSize: 12 }} onClick={() => setOpen(!open)}>
+        {open ? "Hide" : "Show"} {label}'s {title} ({people.length})
+      </button>
+      {open &&
+        people.map((c) => (
+          <div key={c.id} className="row">
+            <div className="row-main">
+              <b>{c.name}</b>
+              <div className="quiet">{detail(c)}</div>
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 /* "Money in" broken down payment by payment, so every dollar in the
    total can be traced back to a client and a date. */
 function MoneyInList({ entries, label }) {
@@ -4221,7 +4275,9 @@ function MoneyInList({ entries, label }) {
   );
 }
 
-function Business({ biz, writeBiz, clients, gigs, totals }) {
+function Business({ biz, writeBiz, clients: allClients, gigs, totals }) {
+  // the two built-in sample cards are not real enquiries or bookings
+  const clients = allClients.filter((c) => !isSampleClient(c));
   const [view, setView] = useState("goals");
   const [sp, setSp] = useState({
     date: isoOf(new Date()),
@@ -4251,21 +4307,17 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
   const payouts = (arr) => arr.reduce((s, c) => s + artistPayout(c), 0);
 
   /* each number keyed to what it actually measures */
-  const askedIn = (mk) =>
-    clients.filter((c) => (inquiryOf(c) || "").slice(0, 7) === mk);
-  const wonIn = (mk) => clients.filter((c) => c.stage >= 3 && c.retainerMonth === mk);
+  const askedIn = (mk) => clients.filter((c) => enquiryMonthOf(c) === mk);
+  const wonIn = (mk) => clients.filter((c) => bookedMonthOf(c) === mk);
   const weddingsIn = (mk) =>
     clients.filter(
-      (c) =>
-        c.stage >= 3 &&
-        c.type === "Bridal" &&
-        (c.eventDate || "").slice(0, 7) === mk
+      (c) => isBooked(c) && isBridal(c) && (c.eventDate || "").slice(0, 7) === mk
     );
 
   /* every event you were physically at, yours and other artists' */
   const eventsIn = (mk) => {
     const mine = clients.filter(
-      (c) => c.stage >= 3 && (c.eventDate || "").slice(0, 7) === mk
+      (c) => isBooked(c) && (c.eventDate || "").slice(0, 7) === mk
     ).length;
     const forOthers = (gigs || []).filter(
       (g) => (g.date || "").slice(0, 7) === mk && !isGigHold(g)
@@ -4645,13 +4697,20 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
               label="Bookings won"
               now={M.book}
               was={P.book}
-              note="retainer landed this month"
+              note="first payment landed this month"
             />
             <Score
               label="My weddings"
               now={M.wed}
               was={P.wed}
-              note="your own brides, done this month"
+              note={(() => {
+                const today = isoOf(new Date());
+                const w = weddingsIn(viewMonth);
+                const done = w.filter((c) => c.eventDate <= today).length;
+                return done === w.length
+                  ? "your own brides, this month"
+                  : `${done} done · ${w.length - done} still to come`;
+              })()}
             />
             <Score
               label="Events attended"
@@ -4668,9 +4727,15 @@ function Business({ biz, writeBiz, clients, gigs, totals }) {
             />
           </div>
           <MoneyInList entries={cashFor(viewMonth)} label={labelMonth(viewMonth)} />
+          <WhoList title="enquiries" people={askedIn(viewMonth)} label={labelMonth(viewMonth)}
+            detail={(c) => `${fmtDate(c.inquiryDate) || "added"} · ${STAGES[c.stage]}${c.archived === "lost" ? " · lost" : ""}`} />
+          <WhoList title="bookings won" people={wonIn(viewMonth)} label={labelMonth(viewMonth)}
+            detail={(c) => `event ${fmtDate(c.eventDate) || "no date"} · ${STAGES[c.stage]}`} />
+          <WhoList title="weddings" people={weddingsIn(viewMonth)} label={labelMonth(viewMonth)}
+            detail={(c) => `${fmtDate(c.eventDate)} · ${STAGES[c.stage]}`} />
 
           <div className="hint">
-            Enquiries count when they arrived, bookings when the retainer landed,
+            Enquiries count when they arrived, bookings when her first payment landed,
             weddings when you actually did them, and money in is only cash that
             reached you this month. Events attended includes work you did for
             other artists; weddings counts only your own brides.
